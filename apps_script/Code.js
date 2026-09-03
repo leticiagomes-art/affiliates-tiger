@@ -17,11 +17,13 @@
  * - AddedAffiliates: afiliados inseridos manualmente pela ferramenta
  * - ContactLog: registro de "último contato" (oferta, resumo, data) por afiliado
  * - ImportUpdates: última leitura de cada import diário, por afiliado (upsert)
+ * - AffiliateMeta: nome no dash da empresa, tipo de tráfego, CPA e usuário/e-mail BuyGoods, por afiliado
  */
 
 const SHEET_ADDED = 'AddedAffiliates';
 const SHEET_CONTACT = 'ContactLog';
 const SHEET_IMPORT = 'ImportUpdates';
+const SHEET_META = 'AffiliateMeta';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -39,6 +41,10 @@ function setup() {
     sh.appendRow(['nome_norm', 'nome', 'volume_ago', 'volume_set', 'net_ago', 'net_set',
                   'tem_dado_custo', 'ultima_venda', 'dias_sem_vender', 'tier',
                   'confirmado', 'total_pedidos', 'volume_total', 'produtos', 'streak_diario', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_META)) {
+    const sh = ss.insertSheet(SHEET_META);
+    sh.appendRow(['nome_norm', 'nome', 'nome_dash', 'trafego', 'cpa', 'buygoods_user', 'atualizado_em']);
   }
   // remove a aba padrão "Sheet1"/"Página1" se estiver vazia
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Página1');
@@ -114,6 +120,7 @@ function doGet(e) {
       added: sheetToObjects_(SHEET_ADDED),
       contacts: sheetToObjects_(SHEET_CONTACT),
       imports: sheetToObjects_(SHEET_IMPORT),
+      meta: sheetToObjects_(SHEET_META),
       ok: true
     };
   } else {
@@ -124,7 +131,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -144,6 +151,13 @@ function doPost(e) {
       const d = body.data;
       const key = normName_(d.nome);
       deleteRow_(SHEET_ADDED, 'nome_norm', key);
+    } else if (action === 'saveAffiliateMeta') {
+      const d = body.data;
+      const key = normName_(d.nome);
+      upsertRow_(SHEET_META, 'nome_norm', key, {
+        nome_norm: key, nome: d.nome, nome_dash: d.nome_dash || '', trafego: d.trafego || '',
+        cpa: d.cpa || '', buygoods_user: d.buygoods_user || '', atualizado_em: now
+      });
     } else if (action === 'logContact') {
       const d = body.data;
       const key = normName_(d.nome);
@@ -162,7 +176,8 @@ function doPost(e) {
           net_ago: d.net_ago, net_set: d.net_set, tem_dado_custo: d.tem_dado_custo,
           ultima_venda: d.ultima_venda, dias_sem_vender: d.dias_sem_vender, tier: d.tier,
           confirmado: d.confirmado, total_pedidos: d.total_pedidos, volume_total: d.volume_total,
-          produtos: (d.produtos || []).join(', '), streak_diario: d.streak_diario || 0, atualizado_em: now
+          produtos: (d.produtos || []).join(', '), streak_diario: d.streak_diario || 0,
+          dados_diarios: d.dados_diarios || '{}', atualizado_em: now
         });
       });
       result.processed = arr.length;

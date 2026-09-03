@@ -48,16 +48,21 @@
   .alert b{color:inherit;}
   h2.section-title{color:var(--ink); font-size:14px; font-weight:700; margin:24px 0 11px; display:flex; align-items:center; gap:8px; letter-spacing:.01em;}
   h2.section-title .bar{width:3px; height:14px; background:var(--orange); border-radius:1px; display:inline-block;}
-  .offers{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:10px;}
-  .offer-card{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:14px 16px; border-top:3px solid var(--orange);}
-  .offer-card h3{margin:0 0 4px; color:var(--ink); font-size:14.5px;}
-  .offer-card .tag{display:inline-block; background:var(--navy); color:#fff; font-size:9.5px; font-weight:700; letter-spacing:.03em; padding:3px 7px; border-radius:4px; margin-bottom:7px; text-transform:uppercase;}
-  .offer-card p{font-size:12px; color:var(--muted); margin:5px 0 10px; line-height:1.5;}
-  .offer-links{display:flex; gap:7px; flex-wrap:wrap;}
-  .offer-links a{font-size:11.5px; text-decoration:none; color:var(--navy); border:1px solid var(--line); padding:5px 10px; border-radius:5px; font-weight:600;}
-  .offer-links a:hover{background:var(--navy); border-color:var(--navy); color:#fff;}
-  .offer-card button.copy-script{margin-top:9px; width:100%; background:var(--orange); border:none; color:#fff; font-weight:700; padding:8px; border-radius:5px; cursor:pointer; font-size:12px;}
-  .offer-card button.copy-script:hover{background:var(--orange-dark);}
+  .row-name{cursor:pointer;} .row-name:hover{text-decoration:underline; color:var(--navy);}
+  .detail-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; margin:10px 0 14px;}
+  .detail-grid label{margin:0 0 4px;}
+  .period-tabs{display:flex; gap:5px; margin:14px 0 10px; flex-wrap:wrap;}
+  .period-tabs button{padding:5px 11px; border-radius:5px; border:1px solid var(--line); background:#fff; color:var(--ink); font-size:11.5px; font-weight:600; cursor:pointer;}
+  .period-tabs button.active{background:var(--navy); color:#fff; border-color:var(--navy);}
+  .chart-summary{font-size:12px; color:var(--muted); margin-bottom:8px;}
+  .chart-summary b{color:var(--ink);}
+  .chart-bars{display:flex; align-items:flex-end; gap:3px; height:110px; border-bottom:1px solid var(--line); padding-bottom:2px;}
+  .chart-bars .bar-col{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:4px;}
+  .chart-bars .bar{width:100%; background:var(--blue); border-radius:2px 2px 0 0; opacity:.85;}
+  .chart-bars .bar.zero{background:var(--line);}
+  .chart-labels{display:flex; gap:3px; margin-top:4px;}
+  .chart-labels span{flex:1; text-align:center; font-size:9.5px; color:var(--muted); min-width:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .chart-empty{color:var(--muted); font-size:12.5px; padding:20px 0; text-align:center;}
   .toolbar{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:11px 13px; display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-bottom:11px;}
   .toolbar input[type=text]{flex:1; min-width:180px; padding:7px 10px; border:1px solid var(--line); border-radius:5px; font-size:12.5px;}
   .toolbar select{padding:7px 8px; border:1px solid var(--line); border-radius:5px; font-size:12px; background:#fff;}
@@ -86,13 +91,11 @@
   .conf-baixa{background:#FCE8E6; color:#B3261E;}
   .contact-links a{display:inline-flex; align-items:center; gap:3px; text-decoration:none; font-size:11.3px; font-weight:600; padding:3px 7px; border-radius:4px; margin:2px 3px 2px 0;}
   .wa{background:#E4F8EC; color:#0F8A3F;} .tg{background:#E5F2FF; color:#1477CC;}
+  .bg-pill{display:inline-block; font-size:11px; font-weight:600; padding:3px 7px; border-radius:4px; background:#F0EBFA; color:#5B3FA8; margin-top:2px;}
   .no-contact{color:var(--muted); font-size:11px; font-style:italic;}
   .row-name{font-weight:700; color:var(--ink);}
   .row-sub{color:var(--muted); font-size:10.5px;}
   .vol{font-weight:600;}
-  .spark{display:flex; align-items:flex-end; gap:1.5px; height:22px;}
-  .spark div{width:6px; background:var(--blue); border-radius:1px 1px 0 0; opacity:.85;}
-  .spark div.zero{background:var(--line);}
   .actions{display:flex; gap:5px; flex-wrap:wrap;}
   .actions button{background:none; border:1px solid var(--line); border-radius:5px; padding:4px 8px; font-size:10.8px; cursor:pointer; color:var(--navy); font-weight:600;}
   .actions button:hover{background:var(--navy); border-color:var(--navy); color:#fff;}
@@ -186,9 +189,6 @@
 <main class="main">
 <div class="wrap">
 
-  <h2 class="section-title"><span class="bar"></span>Ofertas em escala agora (puxe a conversa por aqui)</h2>
-  <div class="offers" id="offersGrid"></div>
-
   <h2 class="section-title"><span class="bar"></span>Todos os afiliados com contato conhecido (543, priorizando quem tem venda real confirmada)</h2>
 
   <div class="banner-import">
@@ -236,25 +236,18 @@
     <span><span class="dot" style="background:#5A1E17"></span>30+ dias (sumido)</span>
     <span><span class="dot" style="background:#4A5468"></span>sem venda confirmada no Orders_2026</span>
     <span class="sep">·</span>
-    <span>gráfico = pedidos por mês (jan→ago), só p/ quem tem venda confirmada</span>
+    <span>clique no nome do afiliado pra ver produtos, volume, tendência e histórico de vendas</span>
   </div>
 
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
-        <th style="width:13%">Afiliado</th>
-        <th style="width:8%">Status venda</th>
-        <th style="width:9%">Produtos</th>
-        <th style="width:8%">Volume histórico</th>
-        <th style="width:10%">Ago × Set (bruto/net)</th>
-        <th style="width:9%">Tendência (jan→ago)</th>
-        <th style="width:7%">Última venda</th>
-        <th style="width:7%">Parado há</th>
-        <th style="width:8%">Seq. diária</th>
-        <th style="width:12%">Contato</th>
-        <th style="width:9%">Último contato</th>
-        <th style="width:8%">Ação</th>
+        <th style="width:22%">Afiliado</th>
+        <th style="width:10%">Parado há</th>
+        <th style="width:23%">Contato</th>
+        <th style="width:22%">Último contato</th>
+        <th style="width:23%">Ação</th>
       </tr>
     </thead>
     <tbody id="tableBody"></tbody>
@@ -305,6 +298,56 @@
   </div>
 </div>
 
+<div class="modal-bg" id="detailModalBg">
+  <div class="modal" style="max-width:600px;">
+    <h3 id="detailName"></h3>
+    <p class="sub" id="detailSub"></p>
+    <div id="detailTrend" style="font-size:12.5px; margin:-6px 0 10px;"></div>
+
+    <div class="detail-grid">
+      <div>
+        <label>Nome no dash da empresa</label>
+        <input type="text" id="dNomeDash" placeholder="Ex: joao-silva">
+      </div>
+      <div>
+        <label>Tipo de tráfego</label>
+        <select id="dTrafego">
+          <option value="">—</option>
+          <option value="Facebook">Facebook</option>
+          <option value="YouTube">YouTube</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </div>
+      <div>
+        <label>CPA do afiliado</label>
+        <input type="text" id="dCpa" placeholder="Ex: 35">
+      </div>
+      <div>
+        <label>Usuário/e-mail BuyGoods</label>
+        <input type="text" id="dBuygoods" placeholder="Ex: joao@email.com">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-orange" id="dSaveMeta" style="flex:0 0 auto; padding:9px 16px;">Salvar dados</button>
+    </div>
+
+    <h2 class="section-title" style="margin-top:20px;"><span class="bar"></span>Análise de vendas</h2>
+    <p class="sub" id="detailAnalysisSub"></p>
+    <div class="period-tabs" id="periodTabs">
+      <button data-period="hoje">Hoje</button>
+      <button data-period="ontem">Ontem</button>
+      <button data-period="mes" class="active">Este mês</button>
+      <button data-period="ano">Este ano</button>
+      <button data-period="tudo">Tudo</button>
+    </div>
+    <div id="detailChartBox"></div>
+
+    <div class="modal-actions" style="margin-top:18px;">
+      <button class="btn-ghost" id="dClose">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast">Copiado!</div>
 
 <script>
@@ -333,6 +376,7 @@ const LS_ADDED = 'tiger_added_affiliates_v1';
 const LS_CONTACTS = 'tiger_contact_log_v1';
 const LS_IMPORT_INFO = 'tiger_last_import_v1';
 const LS_UPDATES = 'tiger_import_updates_v1'; // atualizações vindas de import diário, por nome normalizado
+const LS_META = 'tiger_affiliate_meta_v1'; // nome no dash, tipo de tráfego, CPA, usuário BuyGoods — por nome normalizado
 
 // ---------- Sincronização com Google Sheets (Apps Script) ----------
 // Depois de implantar o Apps Script (ver /apps_script/Code.gs), cole a URL aqui.
@@ -391,6 +435,7 @@ function saveLS(key, val){
 let addedAffiliates = loadLS(LS_ADDED, []);
 let contactLog = loadLS(LS_CONTACTS, {});      // { nome_norm: {oferta, resumo, data} }
 let importUpdates = loadLS(LS_UPDATES, {});    // { nome_norm: {volume_ago, volume_set, ultima_venda, dias_sem_vender, tier, confirmado, produtos} }
+let affiliateMeta = loadLS(LS_META, {});       // { nome_norm: {nome_dash, trafego, cpa, buygoods_user} }
 let lastImportInfo = loadLS(LS_IMPORT_INFO, null);
 
 function serverAddedToLocal(obj){
@@ -418,6 +463,15 @@ function serverContactsToLocal(obj){
   return out;
 }
 
+function serverMetaToLocal(obj){
+  const out = {};
+  Object.keys(obj).forEach(k => {
+    const r = obj[k];
+    out[k] = {nome_dash: r.nome_dash || '', trafego: r.trafego || '', cpa: r.cpa || '', buygoods_user: r.buygoods_user || ''};
+  });
+  return out;
+}
+
 function serverImportsToLocal(obj){
   const out = {};
   Object.keys(obj).forEach(k => {
@@ -435,7 +489,8 @@ function serverImportsToLocal(obj){
       total_pedidos: Number(r.total_pedidos)||0,
       volume_total: Number(r.volume_total)||0,
       produtos: r.produtos ? String(r.produtos).split(',').map(s=>s.trim()).filter(Boolean) : [],
-      streak_diario: Number(r.streak_diario)||0
+      streak_diario: Number(r.streak_diario)||0,
+      dados_diarios: r.dados_diarios ? (function(){ try{ return JSON.parse(r.dados_diarios); }catch(e){ return {}; } })() : {}
     };
   });
   return out;
@@ -448,9 +503,11 @@ async function syncFromServer(){
   addedAffiliates = serverAddedToLocal(j.added || {});
   contactLog = serverContactsToLocal(j.contacts || {});
   importUpdates = serverImportsToLocal(j.imports || {});
+  affiliateMeta = serverMetaToLocal(j.meta || {});
   saveLS(LS_ADDED, addedAffiliates);
   saveLS(LS_CONTACTS, contactLog);
   saveLS(LS_UPDATES, importUpdates);
+  saveLS(LS_META, affiliateMeta);
   renderSyncBadge();
   return true;
 }
@@ -487,6 +544,7 @@ function buildData(){
 }
 
 function fmtMoney(v){ return v.toLocaleString('en-US', {style:'currency', currency:'USD', maximumFractionDigits:0}); }
+function fmtDate_(s){ if(!s) return ''; const m = String(s).match(/^\d{4}-\d{2}-\d{2}/); return m ? m[0] : String(s); }
 function escapeHtml(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 const TIER_COLORS_ = {recente:'#1E7B34', atencao:'#8A6D00', critico:'#B3261E', sumido:'#5A1E17', sem_venda_2026:'#4A5468'};
@@ -527,24 +585,6 @@ function buildScript(entry){
   return {offer, text: `Oi ${nomeAbertura}! ` + offer.script};
 }
 
-function renderOffers(){
-  const grid = document.getElementById('offersGrid');
-  grid.innerHTML = OFFERS.map((o,i) => `
-    <div class="offer-card">
-      <span class="tag">${o.linha}</span>
-      <h3>${o.nome}</h3>
-      <p>${o.desc}</p>
-      <div class="offer-links">
-        <a href="${o.vsl}" target="_blank">Ver VSL</a>
-        <a href="${o.ads}" target="_blank">Ver Ads</a>
-      </div>
-      <button class="copy-script" data-idx="${i}">Copiar script desta oferta</button>
-    </div>`).join('');
-  grid.querySelectorAll('.copy-script').forEach(btn => {
-    btn.addEventListener('click', () => { copyText("Oi! " + OFFERS[btn.dataset.idx].script); showToast('Script copiado!'); });
-  });
-}
-
 function renderStats(list){
   const total = list.length;
   const comContato = list.filter(e => e.telefone || e.telegram).length;
@@ -561,6 +601,8 @@ function contactCell(e){
   let html = '';
   if(e.tel_digits) html += `<a class="wa" href="https://wa.me/${e.tel_digits}" target="_blank">WhatsApp</a><span class="conf conf-${e.conf_telefone}">${e.conf_telefone}</span>`;
   if(e.tg_user) html += `<br><a class="tg" href="https://t.me/${e.tg_user}" target="_blank">@${escapeHtml(e.tg_user)}</a><span class="conf conf-${e.conf_telegram}">${e.conf_telegram}</span>`;
+  const meta = affiliateMeta[normName(e.nome)];
+  if(meta && meta.buygoods_user) html += `<br><span class="bg-pill">BuyGoods: ${escapeHtml(meta.buygoods_user)}</span>`;
   if(!html) return '<span class="no-contact">sem contato na base</span>';
   return `<div class="contact-links">${html}</div>`;
 }
@@ -588,19 +630,7 @@ function contactLogCell(e){
   const key = normName(e.nome);
   const log = contactLog[key];
   if(!log) return '<span class="row-sub">—</span>';
-  return `<div class="contact-log"><b>${escapeHtml(log.oferta)}</b> · ${escapeHtml(log.data)}<br>${escapeHtml(log.resumo||'')}</div>`;
-}
-
-function streakCell(e){
-  const s = e.streak_diario || 0;
-  if(s < 2) return '<span class="row-sub">—</span>';
-  const strong = s >= 5 ? ' style="color:var(--blue); font-weight:700;"' : '';
-  return `<span${strong}>${s} dias seguidos</span>`;
-}
-
-function sparkCell(spark){
-  const max = Math.max(...spark, 1);
-  return `<div class="spark">${spark.map(v => `<div class="${v===0?'zero':''}" style="height:${Math.max(2, (v/max)*22)}px" title="${v} pedidos"></div>`).join('')}</div>`;
+  return `<div class="contact-log"><b>${escapeHtml(log.oferta)}</b> · ${escapeHtml(fmtDate_(log.data))}<br>${escapeHtml(log.resumo||'')}</div>`;
 }
 
 const PAGE_SIZE = 40;
@@ -645,16 +675,8 @@ function renderTable(){
     const rowId = 'row_'+idx;
     return `
     <tr>
-      <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name">${escapeHtml(e.nome)}</span><br><span class="row-sub">${escapeHtml((e.fontes_planilha||[]).join(', '))}</span></td>
-      <td>${e.confirmado ? `<span class="conf conf-alta">confirmado</span> · ${e.total_pedidos||0}×` : `<span class="conf conf-baixa">sem confirmação</span>`}</td>
-      <td>${escapeHtml((e.produtos||[]).join(', ')) || (e.produto_planilha ? '<i>planilha: '+escapeHtml(e.produto_planilha)+'</i>' : '—')}</td>
-
-      <td class="vol">${e.confirmado ? fmtMoney(e.volume_total) : '—'}</td>
-      <td>${trendCell(e)}</td>
-      <td>${e.confirmado ? sparkCell(e.spark) : '—'}</td>
-      <td>${e.ultima_venda ? escapeHtml(e.ultima_venda) : '—'}</td>
+      <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name" data-detail="${idx}">${escapeHtml(e.nome)}</span><br><span class="row-sub">${e.ultima_venda ? 'última venda '+escapeHtml(fmtDate_(e.ultima_venda)) : 'sem venda registrada'}</span></td>
       <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span></td>
-      <td>${streakCell(e)}</td>
       <td>${contactCell(e)}</td>
       <td>${contactLogCell(e)}</td>
       <td class="actions">
@@ -663,7 +685,7 @@ function renderTable(){
         ${(e.fontes_planilha||[]).includes('adicionado manualmente') ? `<button class="danger" data-delbtn="${idx}">Excluir</button>` : ''}
       </td>
     </tr>
-    <tr class="script-row" id="${rowId}"><td colspan="12"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
+    <tr class="script-row" id="${rowId}"><td colspan="5"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
   }).join('');
 
   tbody.querySelectorAll('button[data-script]').forEach(btn => {
@@ -703,6 +725,13 @@ function renderTable(){
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.delbtn);
       deleteAffiliate(currentList[idx]);
+    });
+  });
+
+  tbody.querySelectorAll('.row-name[data-detail]').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.detail);
+      openDetailModal(currentList[idx]);
     });
   });
 
@@ -847,6 +876,130 @@ document.getElementById('cSave').addEventListener('click', async () => {
   renderSyncBadge();
 });
 
+// ---------- Modal: Detalhes do afiliado (análise + dados de contato extra) ----------
+const detailModalBg = document.getElementById('detailModalBg');
+let detailTarget = null;
+let detailPeriod = 'mes';
+
+function openDetailModal(entry){
+  detailTarget = entry;
+  detailPeriod = 'mes';
+  document.getElementById('detailName').textContent = entry.nome;
+  const produtos = (entry.produtos||[]).join(', ') || (entry.produto_planilha || '—');
+  const statusVenda = entry.confirmado
+    ? `confirmado · ${entry.total_pedidos||0}× · ${fmtMoney(entry.volume_total||0)} histórico`
+    : 'sem venda confirmada em 2026';
+  const streakTxt = (entry.streak_diario||0) >= 2 ? ` · ${entry.streak_diario} dias seguidos vendendo` : '';
+  document.getElementById('detailSub').textContent = `${produtos} — ${statusVenda}${streakTxt}`;
+  document.getElementById('detailTrend').innerHTML = trendCell(entry);
+
+  const key = normName(entry.nome);
+  const meta = affiliateMeta[key] || {};
+  document.getElementById('dNomeDash').value = meta.nome_dash || '';
+  document.getElementById('dTrafego').value = meta.trafego || '';
+  document.getElementById('dCpa').value = meta.cpa || '';
+  document.getElementById('dBuygoods').value = meta.buygoods_user || '';
+
+  document.querySelectorAll('#periodTabs button').forEach(b => b.classList.toggle('active', b.dataset.period === detailPeriod));
+  renderDetailChart(entry, detailPeriod);
+  detailModalBg.classList.add('show');
+}
+document.getElementById('dClose').addEventListener('click', () => detailModalBg.classList.remove('show'));
+
+document.querySelectorAll('#periodTabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    detailPeriod = btn.dataset.period;
+    document.querySelectorAll('#periodTabs button').forEach(b => b.classList.toggle('active', b===btn));
+    renderDetailChart(detailTarget, detailPeriod);
+  });
+});
+
+document.getElementById('dSaveMeta').addEventListener('click', async () => {
+  if(!detailTarget) return;
+  const key = normName(detailTarget.nome);
+  const meta = {
+    nome_dash: document.getElementById('dNomeDash').value.trim(),
+    trafego: document.getElementById('dTrafego').value,
+    cpa: document.getElementById('dCpa').value.trim(),
+    buygoods_user: document.getElementById('dBuygoods').value.trim()
+  };
+  affiliateMeta[key] = meta;
+  saveLS(LS_META, affiliateMeta);
+  renderTable();
+  showToast(APPS_SCRIPT_URL ? 'Dados salvos — sincronizando...' : 'Dados salvos (neste navegador)');
+  const res = await apiPost('saveAffiliateMeta', Object.assign({nome: detailTarget.nome}, meta));
+  if(res && res.ok){ syncStatus='ok'; showToast('Sincronizado com Google Sheets ✓'); }
+  else if(APPS_SCRIPT_URL){ syncStatus='erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
+  renderSyncBadge();
+});
+
+function renderDetailChart(entry, period){
+  const box = document.getElementById('detailChartBox');
+  const sub = document.getElementById('detailAnalysisSub');
+  const daily = entry.dados_diarios || {};
+  const keys = Object.keys(daily);
+  if(keys.length === 0){
+    sub.textContent = '';
+    box.innerHTML = '<div class="chart-empty">Sem dados diários pra esse afiliado ainda — importe o arquivo de pedidos do dia pra ver o histórico aqui.</div>';
+    return;
+  }
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  const yestStr = new Date(now.getTime()-86400000).toISOString().slice(0,10);
+
+  if(period === 'hoje' || period === 'ontem'){
+    const dstr = period === 'hoje' ? todayStr : yestStr;
+    const rec = daily[dstr];
+    sub.textContent = period === 'hoje' ? 'Vendas de hoje' : 'Vendas de ontem';
+    box.innerHTML = rec
+      ? `<div class="chart-summary">${rec.orders} pedido${rec.orders===1?'':'s'} · <b>${fmtMoney(rec.volume)}</b></div>`
+      : `<div class="chart-empty">Sem vendas ${period === 'hoje' ? 'hoje' : 'ontem'}.</div>`;
+    return;
+  }
+
+  let buckets = [];
+  if(period === 'mes'){
+    const y = now.getFullYear(), m = now.getMonth();
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    for(let d=1; d<=daysInMonth; d++){
+      const dstr = new Date(y,m,d).toISOString().slice(0,10);
+      const rec = daily[dstr];
+      buckets.push({label: String(d), orders: rec?rec.orders:0, volume: rec?rec.volume:0});
+    }
+    sub.textContent = now.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+  } else {
+    const byMonth = {};
+    keys.forEach(k => {
+      if(period === 'ano' && k.slice(0,4) !== String(now.getFullYear())) return;
+      const mk = k.slice(0,7);
+      if(!byMonth[mk]) byMonth[mk] = {orders:0, volume:0};
+      byMonth[mk].orders += daily[k].orders;
+      byMonth[mk].volume += daily[k].volume;
+    });
+    const monthNames = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    buckets = Object.keys(byMonth).sort().map(mk => {
+      const [y,m] = mk.split('-');
+      return {label: monthNames[parseInt(m)-1]+'/'+y.slice(2), orders: byMonth[mk].orders, volume: byMonth[mk].volume};
+    });
+    sub.textContent = period === 'ano' ? ('Ano de '+now.getFullYear()) : 'Todo o histórico disponível nesta importação';
+  }
+
+  const totalOrders = buckets.reduce((s,b)=>s+b.orders,0);
+  const totalVolume = buckets.reduce((s,b)=>s+b.volume,0);
+  if(totalOrders === 0){
+    box.innerHTML = '<div class="chart-empty">Sem vendas no período selecionado.</div>';
+    return;
+  }
+  const max = Math.max(...buckets.map(b=>b.volume), 1);
+  const barsHtml = buckets.map(b => `<div class="bar-col"><div class="bar ${b.volume===0?'zero':''}" style="height:${Math.max(2,(b.volume/max)*100)}%" title="${escapeHtml(b.label)}: ${b.orders} pedido(s), ${fmtMoney(b.volume)}"></div></div>`).join('');
+  const labelsHtml = buckets.map(b => `<span>${escapeHtml(b.label)}</span>`).join('');
+  box.innerHTML = `
+    <div class="chart-summary">${totalOrders} pedido${totalOrders===1?'':'s'} no período · <b>${fmtMoney(totalVolume)}</b></div>
+    <div class="chart-bars">${barsHtml}</div>
+    <div class="chart-labels">${labelsHtml}</div>`;
+}
+
 // ---------- Importar exportação diária (PEDIDOS_AAAA-MM-DD.xlsx) ----------
 const EXCLUDE_PATTERNS = ['helpgrid','maxweb','mwe','tiger offers','jose moraes','gestor'];
 function isExcludedName(n){
@@ -871,11 +1024,11 @@ document.getElementById('dailyImportFile').addEventListener('change', (ev) => {
   ev.target.value = '';
 });
 
-function streakDiario_(saleDates, lastSale){
+function streakDiario_(daily, lastSale){
   if(!lastSale) return 0;
   let streak = 0;
   const cursor = new Date(lastSale.getTime());
-  while(saleDates.has(cursor.toISOString().slice(0,10))){
+  while(daily[cursor.toISOString().slice(0,10)]){
     streak++;
     cursor.setDate(cursor.getDate()-1);
   }
@@ -937,11 +1090,14 @@ function processDailyImport(wb, filename){
         net = amount - pc - sc - ic - tx - ef;
       }
 
-      if(!monthlyByAff[nkey]) monthlyByAff[nkey] = {nome:name, aug:0, sep:0, augNet:0, sepNet:0, hasCost:false, lastSale:null, produtos:new Set(), orders:0, saleDates:new Set()};
+      if(!monthlyByAff[nkey]) monthlyByAff[nkey] = {nome:name, aug:0, sep:0, augNet:0, sepNet:0, hasCost:false, lastSale:null, produtos:new Set(), orders:0, daily:{}};
       const rec = monthlyByAff[nkey];
       rec.produtos.add(account);
       rec.orders++;
-      rec.saleDates.add(dt.toISOString().slice(0,10));
+      const dayKey = dt.toISOString().slice(0,10);
+      if(!rec.daily[dayKey]) rec.daily[dayKey] = {orders:0, volume:0};
+      rec.daily[dayKey].orders++;
+      rec.daily[dayKey].volume = Math.round((rec.daily[dayKey].volume + amount)*100)/100;
       if(hasCost) rec.hasCost = true;
       const month = dt.getMonth()+1;
       if(month === 8){ rec.aug += amount; if(net!==null) rec.augNet += net; }
@@ -978,7 +1134,8 @@ function processDailyImport(wb, filename){
       total_pedidos: rec.orders,
       volume_total: Math.round((rec.aug+rec.sep)*100)/100,
       produtos: Array.from(rec.produtos),
-      streak_diario: streakDiario_(rec.saleDates, rec.lastSale)
+      streak_diario: streakDiario_(rec.daily, rec.lastSale),
+      dados_diarios: rec.daily
     };
     if(existingKeys.has(key)) updatedCount++; else newCount++;
   });
@@ -993,7 +1150,11 @@ function processDailyImport(wb, filename){
   showToast(`Importado: ${updatedCount} atualizados, ${newCount} novos sem contato` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
 
   if(APPS_SCRIPT_URL){
-    const batch = Object.keys(monthlyByAff).map(k => importUpdates[k]);
+    const batch = Object.keys(monthlyByAff).map(k => {
+      const rec = Object.assign({}, importUpdates[k]);
+      rec.dados_diarios = JSON.stringify(rec.dados_diarios || {});
+      return rec;
+    });
     apiPost('importBatch', batch).then(res => {
       if(res && res.ok){ syncStatus='ok'; showToast(`Sincronizado: ${res.processed} afiliados no Google Sheets ✓`); }
       else { syncStatus='erro'; showToast('Import salvo localmente, mas não sincronizou com o Sheets ainda'); }
@@ -1009,7 +1170,6 @@ function renderImportInfo(){
   el.innerHTML = `Última importação: <b>${lastImportInfo.filename}</b> em ${d.toLocaleString('pt-BR')} — ${lastImportInfo.updated} atualizados, ${lastImportInfo.novos} novos sem contato.`;
 }
 
-renderOffers();
 renderImportInfo();
 renderSyncBadge();
 applyFilters();
