@@ -69,6 +69,7 @@
   .toolbar button{padding:7px 12px; border-radius:5px; border:none; font-weight:700; font-size:12px; cursor:pointer;}
   .btn-navy{background:var(--navy); color:#fff;} .btn-navy:hover{background:#16294c;}
   .btn-orange{background:var(--orange); color:#fff;} .btn-orange:hover{background:var(--orange-dark);}
+  #addAffiliateBtn{border:none; border-radius:999px; padding:9px 18px; font-weight:700; font-size:12.5px; cursor:pointer;}
   .btn-ghost{background:#fff; color:var(--navy); border:1px solid var(--navy) !important;}
   .legend{display:flex; gap:13px; font-size:11px; color:var(--muted); margin:0 2px 10px; flex-wrap:wrap; align-items:center;}
   .legend .dot{display:inline-block; width:7px; height:7px; border-radius:2px; margin-right:5px;}
@@ -274,6 +275,31 @@
     <input type="text" id="mProduto" placeholder="Ex: BreathEaseX">
     <label>Observação</label>
     <textarea id="mObs" placeholder="Ex: veio indicado por fulano..."></textarea>
+
+    <div class="detail-grid" style="margin-top:6px;">
+      <div>
+        <label>Nome no dash da empresa</label>
+        <input type="text" id="mNomeDash" placeholder="Ex: joao-silva">
+      </div>
+      <div>
+        <label>Tipo de tráfego</label>
+        <select id="mTrafego">
+          <option value="">—</option>
+          <option value="Facebook">Facebook</option>
+          <option value="YouTube">YouTube</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </div>
+      <div>
+        <label>CPA do afiliado</label>
+        <input type="text" id="mCpa" placeholder="Ex: 35">
+      </div>
+      <div>
+        <label>Usuário/e-mail BuyGoods</label>
+        <input type="text" id="mBuygoods" placeholder="Ex: joao@email.com">
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn-ghost" id="mCancel">Cancelar</button>
       <button class="btn-orange" id="mSave">Adicionar</button>
@@ -607,6 +633,14 @@ function contactCell(e){
   return `<div class="contact-links">${html}</div>`;
 }
 
+function pctBadge_(e){
+  const ago = e.volume_ago, set = e.volume_set;
+  if(!ago || set===null || set===undefined) return '';
+  const pct = Math.round(((set-ago)/ago)*100);
+  const cls = pct > 5 ? 'trend-up' : (pct < -5 ? 'trend-down' : 'trend-flat');
+  return `<br><span class="${cls}" style="font-size:10.5px; font-weight:700;">${pct>0?'+':''}${pct}%</span>`;
+}
+
 function trendCell(e){
   const ago = e.volume_ago, set = e.volume_set;
   if(ago===null || ago===undefined || set===null || set===undefined){
@@ -676,7 +710,7 @@ function renderTable(){
     return `
     <tr>
       <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name" data-detail="${idx}">${escapeHtml(e.nome)}</span><br><span class="row-sub">${e.ultima_venda ? 'última venda '+escapeHtml(fmtDate_(e.ultima_venda)) : 'sem venda registrada'}</span></td>
-      <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span></td>
+      <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}</td>
       <td>${contactCell(e)}</td>
       <td>${contactLogCell(e)}</td>
       <td class="actions">
@@ -801,6 +835,10 @@ document.getElementById('mSave').addEventListener('click', async () => {
   const tg = document.getElementById('mTg').value.trim();
   const obs = document.getElementById('mObs').value.trim();
   const produto = document.getElementById('mProduto').value.trim();
+  const nomeDash = document.getElementById('mNomeDash').value.trim();
+  const trafego = document.getElementById('mTrafego').value;
+  const cpa = document.getElementById('mCpa').value.trim();
+  const buygoods = document.getElementById('mBuygoods').value.trim();
   const novo = {
     nome,
     telefone: tel || null,
@@ -819,13 +857,23 @@ document.getElementById('mSave').addEventListener('click', async () => {
   };
   addedAffiliates.push(novo);
   saveLS(LS_ADDED, addedAffiliates);
+  const hasMeta = nomeDash || trafego || cpa || buygoods;
+  if(hasMeta){
+    affiliateMeta[normName(nome)] = {nome_dash: nomeDash, trafego, cpa, buygoods_user: buygoods};
+    saveLS(LS_META, affiliateMeta);
+  }
   DATA = buildData();
   addModalBg.classList.remove('show');
-  ['mNome','mTel','mTg','mProduto','mObs'].forEach(id => document.getElementById(id).value = '');
+  ['mNome','mTel','mTg','mProduto','mObs','mNomeDash','mTrafego','mCpa','mBuygoods'].forEach(id => document.getElementById(id).value = '');
   applyFilters();
   showToast(APPS_SCRIPT_URL ? 'Afiliado adicionado — sincronizando...' : 'Afiliado adicionado (salvo neste navegador)');
   const res = await apiPost('addAffiliate', {nome, telefone: tel, telegram: tg, produto_planilha: produto, observacao: obs});
-  if(res && res.ok){ syncStatus='ok'; showToast('Sincronizado com Google Sheets ✓'); }
+  let metaOk = true;
+  if(hasMeta){
+    const metaRes = await apiPost('saveAffiliateMeta', {nome, nome_dash: nomeDash, trafego, cpa, buygoods_user: buygoods});
+    metaOk = !!(metaRes && metaRes.ok);
+  }
+  if(res && res.ok && metaOk){ syncStatus='ok'; showToast('Sincronizado com Google Sheets ✓'); }
   else if(APPS_SCRIPT_URL){ syncStatus='erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
   renderSyncBadge();
 });

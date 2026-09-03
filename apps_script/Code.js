@@ -77,8 +77,9 @@ function sheetToObjects_(sheetName) {
 }
 
 function upsertRow_(sheetName, keyField, keyValue, rowObj) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  let headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  let headers = sh.getLastColumn() > 0 ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0] : [];
   // se rowObj trouxer campos que a planilha ainda não tem como coluna, cria a coluna (schema auto-migra)
   const missing = Object.keys(rowObj).filter(k => headers.indexOf(k) === -1);
   if (missing.length) {
@@ -100,6 +101,7 @@ function upsertRow_(sheetName, keyField, keyValue, rowObj) {
 
 function deleteRow_(sheetName, keyField, keyValue) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sh || sh.getLastRow() < 1) return;
   const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   const data = sh.getDataRange().getValues();
   const keyIdx = headers.indexOf(keyField);
@@ -151,6 +153,7 @@ function doPost(e) {
       const d = body.data;
       const key = normName_(d.nome);
       deleteRow_(SHEET_ADDED, 'nome_norm', key);
+      deleteRow_(SHEET_META, 'nome_norm', key);
     } else if (action === 'saveAffiliateMeta') {
       const d = body.data;
       const key = normName_(d.nome);
