@@ -635,7 +635,9 @@ function buildData(){
   // aplica atualizações de import diário
   merged.forEach(e => {
     const key = normName(e.nome);
-    if(importUpdates[key]) Object.assign(e, importUpdates[key]);
+    // o nome já conhecido na base de contato é o canônico — import não deve sobrescrevê-lo
+    // (evita, por ex., "Fabio Torrezani" virar "FABIO SOBRAL TORREZANI" só por causa de um alias)
+    if(importUpdates[key]) Object.assign(e, importUpdates[key], {nome: e.nome});
     e.receita_diaria = revenueDaily[key] || {};
     e.lifetime = lifetimeStats[key] || null;
   });
