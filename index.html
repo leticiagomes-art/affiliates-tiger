@@ -200,6 +200,10 @@
       Importar relatório BuyGoods
       <input type="file" id="buyGoodsImportFile" accept=".xlsx,.xls,.csv">
     </span>
+    <span class="file-input-btn btn-ghost" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px;">
+      Importar base histórica (Master Affiliates)
+      <input type="file" id="masterImportFile" accept=".xlsx,.xls,.csv">
+    </span>
     <button class="btn-orange" id="addAffiliateBtn">+ Inserir afiliado</button>
   </div>
 
@@ -334,6 +338,7 @@
     <p class="sub" id="detailSub"></p>
     <div id="detailTrend" style="font-size:12.5px; margin:-6px 0 10px;"></div>
     <div id="detailContactLog" style="font-size:12px; margin:0 0 10px;"></div>
+    <div id="detailLifetime" style="font-size:12px; margin:0 0 10px;"></div>
 
     <div class="detail-grid">
       <div>
@@ -410,6 +415,7 @@ const LS_UPDATES = 'tiger_import_updates_v1'; // atualizações vindas de import
 const LS_META = 'tiger_affiliate_meta_v1'; // nome no dash, tipo de tráfego, CPA, usuário BuyGoods — por nome normalizado
 const LS_REVENUE = 'tiger_revenue_daily_v1'; // faturamento real por dia (do relatório allProducts), acumulado import a import
 const LS_REVENUE_NAMES = 'tiger_revenue_names_v1'; // nome de exibição de afiliados vistos só em import (nome_norm -> nome)
+const LS_LIFETIME = 'tiger_lifetime_stats_v1'; // totais vitalícios (desde o início da operação) do Master Affiliates, sem granularidade de data
 
 // ---------- Sincronização com Google Sheets (Apps Script) ----------
 // Depois de implantar o Apps Script (ver /apps_script/Code.gs), cole a URL aqui.
@@ -471,6 +477,7 @@ let importUpdates = loadLS(LS_UPDATES, {});    // { nome_norm: {volume_ago, volu
 let affiliateMeta = loadLS(LS_META, {});       // { nome_norm: {nome_dash, trafego, cpa, buygoods_user} }
 let revenueDaily = loadLS(LS_REVENUE, {});     // { nome_norm: { 'YYYY-MM-DD': {vendas, faturamento, produtos} } }
 let revenueNames = loadLS(LS_REVENUE_NAMES, {}); // { nome_norm: 'Nome de exibição' } — pra afiliados só vistos em import
+let lifetimeStats = loadLS(LS_LIFETIME, {});   // { nome_norm: {nome, produtos, orders, gross, net, commissions, refunds} } — totais desde o início, sem data
 let lastImportInfo = loadLS(LS_IMPORT_INFO, null);
 
 function serverAddedToLocal(obj){
@@ -515,6 +522,20 @@ function serverRevenueToLocal(obj){
   return out;
 }
 
+function serverLifetimeToLocal(obj){
+  const out = {};
+  Object.keys(obj).forEach(k => {
+    const r = obj[k];
+    out[k] = {
+      nome: r.nome,
+      produtos: r.produtos ? String(r.produtos).split(',').map(s=>s.trim()).filter(Boolean) : [],
+      orders: Number(r.orders)||0, gross: Number(r.gross)||0, net: Number(r.net)||0,
+      commissions: Number(r.commissions)||0, refunds: Number(r.refunds)||0
+    };
+  });
+  return out;
+}
+
 function serverImportsToLocal(obj){
   const out = {};
   Object.keys(obj).forEach(k => {
@@ -549,12 +570,14 @@ async function syncFromServer(){
   affiliateMeta = serverMetaToLocal(j.meta || {});
   revenueDaily = serverRevenueToLocal(j.revenue || {});
   Object.keys(j.revenue || {}).forEach(k => { if(j.revenue[k].nome) revenueNames[k] = j.revenue[k].nome; });
+  lifetimeStats = serverLifetimeToLocal(j.lifetime || {});
   saveLS(LS_ADDED, addedAffiliates);
   saveLS(LS_CONTACTS, contactLog);
   saveLS(LS_UPDATES, importUpdates);
   saveLS(LS_META, affiliateMeta);
   saveLS(LS_REVENUE, revenueDaily);
   saveLS(LS_REVENUE_NAMES, revenueNames);
+  saveLS(LS_LIFETIME, lifetimeStats);
   renderSyncBadge();
   return true;
 }
@@ -582,21 +605,23 @@ function buildData(){
     const key = normName(e.nome);
     if(importUpdates[key]) Object.assign(e, importUpdates[key]);
     e.receita_diaria = revenueDaily[key] || {};
+    e.lifetime = lifetimeStats[key] || null;
   });
   // acrescenta afiliados inseridos manualmente (se não colidir com nome já existente)
   addedAffiliates.forEach(a => {
     const key = normName(a.nome);
-    if(!merged.some(e => normName(e.nome) === key)) merged.push(Object.assign({receita_diaria: revenueDaily[key] || {}}, a));
+    if(!merged.some(e => normName(e.nome) === key)) merged.push(Object.assign({receita_diaria: revenueDaily[key] || {}, lifetime: lifetimeStats[key] || null}, a));
   });
 
-  // afiliados que só aparecem em algum import (PEDIDOS ou faturamento) e ainda não têm contato conhecido
+  // afiliados que só aparecem em algum import (PEDIDOS, faturamento ou base histórica) e ainda não têm contato conhecido
   const knownKeys = new Set(merged.map(e => normName(e.nome)));
-  const importOnlyKeys = new Set(Object.keys(importUpdates).concat(Object.keys(revenueDaily)));
+  const importOnlyKeys = new Set(Object.keys(importUpdates).concat(Object.keys(revenueDaily)).concat(Object.keys(lifetimeStats)));
   importOnlyKeys.forEach(key => {
     if(knownKeys.has(key)) return;
     const upd = importUpdates[key] || {};
+    const life = lifetimeStats[key] || null;
     merged.push({
-      nome: upd.nome || revenueNames[key] || key,
+      nome: upd.nome || revenueNames[key] || (life && life.nome) || key,
       telefone: null, tel_digits: null, conf_telefone: null,
       telegram: null, tg_user: null, conf_telegram: null,
       status_planilha: 'sem contato na base — só aparece em import',
@@ -616,7 +641,8 @@ function buildData(){
       tem_dado_custo: upd.tem_dado_custo || false,
       streak_diario: upd.streak_diario || 0,
       dados_diarios: upd.dados_diarios || {},
-      receita_diaria: revenueDaily[key] || {}
+      receita_diaria: revenueDaily[key] || {},
+      lifetime: life
     });
     knownKeys.add(key);
   });
@@ -739,6 +765,7 @@ function produtosFallback_(e){
   if(e.produtos && e.produtos.length) return e.produtos;
   const dias = Object.keys(e.receita_diaria||{}).sort().reverse();
   if(dias.length && e.receita_diaria[dias[0]].produtos) return e.receita_diaria[dias[0]].produtos;
+  if(e.lifetime && e.lifetime.produtos && e.lifetime.produtos.length) return e.lifetime.produtos;
   return [];
 }
 
@@ -1069,6 +1096,10 @@ function openDetailModal(entry){
   document.getElementById('detailSub').textContent = `${produtos} — ${statusVenda}${streakTxt}`;
   document.getElementById('detailTrend').innerHTML = trendCell(entry);
   document.getElementById('detailContactLog').innerHTML = '<label>Último contato registrado</label>' + contactLogCell(entry);
+  const life = entry.lifetime;
+  document.getElementById('detailLifetime').innerHTML = life
+    ? `<label>Histórico geral (desde jan/2025, base BuyGoods)</label><div class="row-sub">${life.orders} pedido${life.orders===1?'':'s'} · ${fmtMoney(life.gross)} bruto · ${fmtMoney(life.net)} líquido${life.refunds?' · '+fmtMoney(life.refunds)+' em reembolso/chargeback':''}</div>`
+    : '';
 
   const key = normName(entry.nome);
   const meta = affiliateMeta[key] || {};
@@ -1208,6 +1239,97 @@ document.getElementById('buyGoodsImportFile').addEventListener('change', (ev) =>
   reader.readAsBinaryString(file);
   ev.target.value = '';
 });
+
+// ---------- Importar base histórica (Master Affiliates — exportação única, sem data) ----------
+document.getElementById('masterImportFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
+      processMasterAffiliatesImport(wb, file.name);
+    } catch(err){
+      console.error(err);
+      alert('Não consegui ler esse arquivo. Confira se é a exportação "Master Affiliates" da BuyGoods.');
+    }
+  };
+  reader.readAsBinaryString(file);
+  ev.target.value = '';
+});
+
+function processMasterAffiliatesImport(wb, filename){
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+
+  let hpos = -1;
+  for(let i=0; i<rows.length; i++){
+    if(rows[i] && rows[i][0]==='Account' && rows[i][1]==='Affiliate'){ hpos = i; break; }
+  }
+  if(hpos === -1){
+    alert('Não encontrei o cabeçalho esperado (Account, Affiliate) — confira se é o arquivo Master Affiliates certo.');
+    return;
+  }
+  const header = rows[hpos];
+  const hidx = {};
+  header.forEach((h,i) => hidx[h] = i);
+  const need = ['Account','Affiliate','Orders (FE+BE)','Gross Sales','Net Sales','Commissions Net','Total CBs & Refunds'];
+  if(!need.every(h => h in hidx)){
+    alert('Faltam colunas esperadas nesse arquivo — confira se é o Master Affiliates certo.');
+    return;
+  }
+
+  const byAff = {}; // nome_norm -> {nome, produtos:Set, orders, gross, net, commissions, refunds}
+  for(let i=hpos+1; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+    const account = row[hidx['Account']];
+    const nome = row[hidx['Affiliate']];
+    if(!nome || account === 'Total') continue;
+    const nkey = normName(nome);
+    if(!nkey || isExcludedName(nkey)) continue;
+    const orders = Number(row[hidx['Orders (FE+BE)']]) || 0;
+    if(!byAff[nkey]) byAff[nkey] = {nome, produtos:new Set(), orders:0, gross:0, net:0, commissions:0, refunds:0};
+    const rec = byAff[nkey];
+    rec.orders += orders;
+    rec.gross += Number(row[hidx['Gross Sales']]) || 0;
+    rec.net += Number(row[hidx['Net Sales']]) || 0;
+    rec.commissions += Number(row[hidx['Commissions Net']]) || 0;
+    rec.refunds += Number(row[hidx['Total CBs & Refunds']]) || 0;
+    if(orders > 0 && account) rec.produtos.add(account);
+  }
+
+  const totalAfiliados = Object.keys(byAff).length;
+  const keys = Object.keys(byAff).filter(k => byAff[k].orders > 0);
+  if(!confirm(`Encontrei ${totalAfiliados} afiliados no arquivo, ${keys.length} com pelo menos 1 pedido. Só esses ${keys.length} vão entrar na ferramenta (com histórico geral, sem data). Isso substitui qualquer base histórica importada antes. Confirmar?`)) return;
+
+  lifetimeStats = {};
+  keys.forEach(key => {
+    const rec = byAff[key];
+    lifetimeStats[key] = {
+      nome: rec.nome,
+      produtos: Array.from(rec.produtos),
+      orders: rec.orders,
+      gross: Math.round(rec.gross*100)/100,
+      net: Math.round(rec.net*100)/100,
+      commissions: Math.round(rec.commissions*100)/100,
+      refunds: Math.round(rec.refunds*100)/100
+    };
+  });
+  saveLS(LS_LIFETIME, lifetimeStats);
+  DATA = buildData();
+  applyFilters();
+  showToast(`Base histórica importada: ${keys.length} afiliados com pedidos` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
+
+  if(APPS_SCRIPT_URL){
+    const batch = keys.map(key => Object.assign({nome_norm: key}, lifetimeStats[key], {produtos: lifetimeStats[key].produtos.join(', ')}));
+    apiPost('importLifetimeBatch', batch).then(res => {
+      if(res && res.ok){ syncStatus='ok'; showToast(`Base histórica sincronizada: ${res.processed} afiliados ✓`); }
+      else { syncStatus='erro'; showToast('Base histórica salva localmente, mas não sincronizou com o Sheets ainda'); }
+      renderSyncBadge();
+    });
+  }
+}
 
 function streakDiario_(daily, lastSale){
   if(!lastSale) return 0;

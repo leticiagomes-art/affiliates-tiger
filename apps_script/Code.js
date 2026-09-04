@@ -20,6 +20,8 @@
  * - AffiliateMeta: nome no dash da empresa, tipo de tráfego, CPA e usuário/e-mail BuyGoods, por afiliado
  * - RevenueDaily: faturamento real por dia (relatório allProducts, aba "Detalhado por Funil"), 1 linha por
  *   afiliado com um JSON acumulado dia a dia na coluna dados_json
+ * - LifetimeStats: totais vitalícios (desde o início da operação, sem data) do export "Master Affiliates"
+ *   da BuyGoods — importação única, substitui a aba inteira a cada vez
  */
 
 const SHEET_ADDED = 'AddedAffiliates';
@@ -27,6 +29,7 @@ const SHEET_CONTACT = 'ContactLog';
 const SHEET_IMPORT = 'ImportUpdates';
 const SHEET_META = 'AffiliateMeta';
 const SHEET_REVENUE = 'RevenueDaily';
+const SHEET_LIFETIME = 'LifetimeStats';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -52,6 +55,10 @@ function setup() {
   if (!ss.getSheetByName(SHEET_REVENUE)) {
     const sh = ss.insertSheet(SHEET_REVENUE);
     sh.appendRow(['nome_norm', 'nome', 'dados_json', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_LIFETIME)) {
+    const sh = ss.insertSheet(SHEET_LIFETIME);
+    sh.appendRow(['nome_norm', 'nome', 'produtos', 'orders', 'gross', 'net', 'commissions', 'refunds', 'atualizado_em']);
   }
   // remove a aba padrão "Sheet1"/"Página1" se estiver vazia
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Página1');
@@ -106,6 +113,18 @@ function upsertRow_(sheetName, keyField, keyValue, rowObj) {
   }
 }
 
+function bulkReplaceSheet_(sheetName, headers, rows) {
+  // substitui a aba inteira de uma vez (1 chamada de rede) — usado por importações grandes/únicas
+  // onde upsert linha-a-linha (que relê a planilha inteira a cada chamada) seria lento demais
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  sh.clear();
+  const allRows = [headers].concat(rows);
+  if (allRows.length > 0) {
+    sh.getRange(1, 1, allRows.length, headers.length).setValues(allRows);
+  }
+}
+
 function deleteRow_(sheetName, keyField, keyValue) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sh || sh.getLastRow() < 1) return;
@@ -131,6 +150,7 @@ function doGet(e) {
       imports: sheetToObjects_(SHEET_IMPORT),
       meta: sheetToObjects_(SHEET_META),
       revenue: sheetToObjects_(SHEET_REVENUE),
+      lifetime: sheetToObjects_(SHEET_LIFETIME),
       ok: true
     };
   } else {
@@ -141,7 +161,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importLifetimeBatch', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -201,6 +221,16 @@ function doPost(e) {
           nome_norm: key, nome: d.nome, dados_json: d.dados_json || '{}', atualizado_em: now
         });
       });
+      result.processed = arr.length;
+    } else if (action === 'importLifetimeBatch') {
+      // body.data = array COMPLETO (substitui a aba inteira) — importação única da base histórica
+      const arr = body.data || [];
+      const headers = ['nome_norm', 'nome', 'produtos', 'orders', 'gross', 'net', 'commissions', 'refunds', 'atualizado_em'];
+      const rows = arr.map(d => [
+        d.nome_norm || normName_(d.nome), d.nome || '', d.produtos || '',
+        d.orders || 0, d.gross || 0, d.net || 0, d.commissions || 0, d.refunds || 0, now
+      ]);
+      bulkReplaceSheet_(SHEET_LIFETIME, headers, rows);
       result.processed = arr.length;
     } else {
       result = { ok: false, error: 'ação desconhecida: ' + action };
