@@ -221,11 +221,6 @@
       <option value="sumido">Sumido (16d+)</option>
       <option value="sem_venda_2026">Sem venda confirmada em 2026</option>
     </select>
-    <select id="confFilter">
-      <option value="">Confirmado ou não</option>
-      <option value="sim">Só venda confirmada (Orders_2026)</option>
-      <option value="nao">Só sem confirmação</option>
-    </select>
     <select id="contactFilter">
       <option value="">Com ou sem contato</option>
       <option value="com">Só com contato</option>
@@ -866,7 +861,6 @@ function vendeuNoPeriodo_(e, dias, offsetDias){
 function applyFilters(){
   const q = document.getElementById('searchBox').value.trim().toLowerCase();
   const tier = document.getElementById('tierFilter').value;
-  const conf = document.getElementById('confFilter').value;
   const contact = document.getElementById('contactFilter').value;
   const ontemF = document.getElementById('ontemFilter').value;
   const semanaF = document.getElementById('semanaFilter').value;
@@ -876,8 +870,6 @@ function applyFilters(){
       if(!hay.includes(q)) return false;
     }
     if(tier && e.tier !== tier) return false;
-    if(conf === 'sim' && !e.confirmado) return false;
-    if(conf === 'nao' && e.confirmado) return false;
     if(contact === 'com' && !(e.telefone || e.telegram)) return false;
     if(contact === 'sem' && (e.telefone || e.telegram)) return false;
     if(ontemF === 'sim' && !vendeuNoPeriodo_(e,1,1)) return false;
@@ -1013,7 +1005,6 @@ function showToast(msg){
 
 document.getElementById('searchBox').addEventListener('input', applyFilters);
 document.getElementById('tierFilter').addEventListener('change', applyFilters);
-document.getElementById('confFilter').addEventListener('change', applyFilters);
 document.getElementById('contactFilter').addEventListener('change', applyFilters);
 document.getElementById('ontemFilter').addEventListener('change', applyFilters);
 document.getElementById('semanaFilter').addEventListener('change', applyFilters);
