@@ -194,15 +194,11 @@
 
   <div class="banner-import">
     <div class="info">
-      <b>Atualização diária:</b> jogue aqui o export que vocês recebem por e-mail (PEDIDOS_AAAA-MM-DD.xlsx) pra atualizar última venda, volume e status — e o relatório de faturamento (relatorio_afiliados_allProducts_...xlsx) pra atualizar faturamento por mês. Sem precisar mexer no código. <span id="lastImportInfo"></span>
+      <b>Atualização diária:</b> jogue aqui o relatório da BuyGoods que chega por e-mail todo dia (Relatorio_BuyGoods_AAAA-MM-DD.xlsx) pra atualizar última venda, status, sequência e faturamento líquido de todos os produtos de uma vez. Sem precisar mexer no código. <span id="lastImportInfo"></span>
     </div>
     <span class="file-input-btn btn-navy" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px; color:#fff;">
-      Importar exportação do dia
-      <input type="file" id="dailyImportFile" accept=".xlsx,.xls,.csv">
-    </span>
-    <span class="file-input-btn btn-navy" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px; color:#fff;">
-      Importar faturamento do dia
-      <input type="file" id="dailyRevenueFile" accept=".xlsx,.xls,.csv">
+      Importar relatório BuyGoods
+      <input type="file" id="buyGoodsImportFile" accept=".xlsx,.xls,.csv">
     </span>
     <button class="btn-orange" id="addAffiliateBtn">+ Inserir afiliado</button>
   </div>
@@ -529,7 +525,7 @@ function serverImportsToLocal(obj){
       net_ago: r.net_ago === '' ? null : Number(r.net_ago),
       net_set: r.net_set === '' ? null : Number(r.net_set),
       tem_dado_custo: r.tem_dado_custo === true || r.tem_dado_custo === 'true',
-      ultima_venda: r.ultima_venda || null,
+      ultima_venda: fmtDate_(r.ultima_venda) || null,
       dias_sem_vender: r.dias_sem_vender === '' ? null : Number(r.dias_sem_vender),
       tier: r.tier || 'sem_venda_2026',
       confirmado: r.confirmado === true || r.confirmado === 'true',
@@ -1186,104 +1182,22 @@ function isExcludedName(n){
   return EXCLUDE_PATTERNS.some(p => n.includes(p));
 }
 
-document.getElementById('dailyImportFile').addEventListener('change', (ev) => {
+document.getElementById('buyGoodsImportFile').addEventListener('change', (ev) => {
   const file = ev.target.files[0];
   if(!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
-      processDailyImport(wb, file.name);
+      processBuyGoodsImport(wb, file.name);
     } catch(err){
       console.error(err);
-      alert('Não consegui ler esse arquivo. Confira se é o export de Order Items (.xlsx/.csv) igual ao que vocês recebem por e-mail.');
+      alert('Não consegui ler esse arquivo. Confira se é o Relatorio_BuyGoods_AAAA-MM-DD.xlsx igual ao que chega por e-mail (uma aba por produto).');
     }
   };
   reader.readAsBinaryString(file);
   ev.target.value = '';
 });
-
-// ---------- Importar faturamento do dia (relatorio_afiliados_allProducts_...xlsx) ----------
-document.getElementById('dailyRevenueFile').addEventListener('change', (ev) => {
-  const file = ev.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
-      processRevenueImport(wb, file.name);
-    } catch(err){
-      console.error(err);
-      alert('Não consegui ler esse arquivo. Confira se é o relatório "allProducts" (aba "Detalhado por Funil") igual ao que vocês baixam do dash.');
-    }
-  };
-  reader.readAsBinaryString(file);
-  ev.target.value = '';
-});
-
-function processRevenueImport(wb, filename){
-  let sheetName = wb.SheetNames.find(n => n.indexOf('Funil') !== -1 && n.indexOf('Detalhado') !== -1);
-  if(!sheetName) sheetName = wb.SheetNames[1] || wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
-  if(!rows.length){ alert('Arquivo vazio ou aba não encontrada.'); return; }
-
-  const header = rows[0];
-  const hidx = {};
-  header.forEach((h,i) => hidx[h] = i);
-  if(!('Afiliado' in hidx) || !('Faturamento' in hidx)){
-    alert('Não encontrei as colunas esperadas (Afiliado, Faturamento) — confira se é a aba "Detalhado por Funil" do relatório allProducts.');
-    return;
-  }
-
-  const m = filename.match(/(\d{4}-\d{2}-\d{2})_a_(\d{4}-\d{2}-\d{2})/);
-  const dayKey = m ? m[2] : new Date().toISOString().slice(0,10);
-
-  const byAff = {}; // nome_norm -> {nome, vendas, faturamento, produtos:Set}
-  for(let i=1; i<rows.length; i++){
-    const row = rows[i];
-    if(!row) continue;
-    const nome = row[hidx['Afiliado']];
-    if(!nome || String(nome).toUpperCase().indexOf('TOTAL') !== -1) continue;
-    const nkey = normName(nome);
-    if(!nkey || isExcludedName(nkey)) continue;
-    const vendas = Number(row[hidx['Vendas']]) || 0;
-    const faturamento = Number(row[hidx['Faturamento']]) || 0;
-    const produto = hidx['Produto']!==undefined ? row[hidx['Produto']] : null;
-    if(!byAff[nkey]) byAff[nkey] = {nome, vendas:0, faturamento:0, produtos:new Set()};
-    byAff[nkey].vendas += vendas;
-    byAff[nkey].faturamento += faturamento;
-    if(produto) byAff[nkey].produtos.add(produto);
-  }
-
-  const keys = Object.keys(byAff);
-  keys.forEach(key => {
-    const rec = byAff[key];
-    if(!revenueDaily[key]) revenueDaily[key] = {};
-    revenueDaily[key][dayKey] = {
-      vendas: rec.vendas,
-      faturamento: Math.round(rec.faturamento*100)/100,
-      produtos: Array.from(rec.produtos)
-    };
-    revenueNames[key] = rec.nome;
-  });
-  saveLS(LS_REVENUE, revenueDaily);
-  saveLS(LS_REVENUE_NAMES, revenueNames);
-  DATA = buildData();
-  updateMonthOptions();
-  selectedMonth = document.getElementById('monthFilter').value;
-  applyFilters();
-  showToast(`Faturamento de ${dayKey} importado: ${keys.length} afiliados` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
-
-  if(APPS_SCRIPT_URL){
-    const batch = keys.map(key => ({nome: byAff[key].nome, dados_json: JSON.stringify(revenueDaily[key])}));
-    apiPost('importRevenueBatch', batch).then(res => {
-      if(res && res.ok){ syncStatus='ok'; showToast(`Faturamento sincronizado: ${res.processed} afiliados ✓`); }
-      else { syncStatus='erro'; showToast('Faturamento salvo localmente, mas não sincronizou com o Sheets ainda'); }
-      renderSyncBadge();
-    });
-  }
-}
 
 function streakDiario_(daily, lastSale){
   if(!lastSale) return 0;
@@ -1296,128 +1210,133 @@ function streakDiario_(daily, lastSale){
   return streak;
 }
 
-function processDailyImport(wb, filename){
-  const sheetName = wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+function recalcTierFromLastSale_(ultimaVendaStr){
+  if(!ultimaVendaStr) return {dias:null, tier:'sem_venda_2026'};
+  const dias = Math.floor((new Date() - new Date(ultimaVendaStr))/86400000);
+  let tier = 'recente';
+  if(dias > 30) tier = 'sumido';
+  else if(dias > 15) tier = 'critico';
+  else if(dias > 7) tier = 'atencao';
+  return {dias, tier};
+}
 
-  // localizar blocos de cabecalho (linha onde coluna B == 'Order Item ID')
-  const headerPositions = [];
-  rows.forEach((r,i) => { if(r[1] && String(r[1]).indexOf('Order Item ID') !== -1) headerPositions.push(i); });
+// ---------- Importar relatório BuyGoods (Relatorio_BuyGoods_AAAA-MM-DD.xlsx, uma aba por produto) ----------
+function processBuyGoodsImport(wb, filename){
+  const m = filename.match(/(\d{4}-\d{2}-\d{2})/);
+  const dayKey = m ? m[1] : new Date().toISOString().slice(0,10);
 
-  if(headerPositions.length === 0){
-    alert('Não encontrei o padrão esperado (coluna "Order Item ID"). Confira se é o arquivo certo.');
-    return;
-  }
+  const byAff = {}; // nome_norm -> {nome, vendas, faturamento, produtos:Set}
+  let sheetsLidas = 0;
 
-  const monthlyByAff = {}; // nome_norm -> {nome, aug:0, sep:0, augNet:0, sepNet:0, hasCost:false, lastSale:null, produtos:Set}
-
-  headerPositions.forEach((hpos, bi) => {
-    const account = rows[hpos][0];
-    const header = rows[hpos].slice(1).filter(h => h !== null && h !== undefined);
+  wb.SheetNames.forEach(produto => {
+    const ws = wb.Sheets[produto];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+    if(!rows.length) return;
+    const header = rows[0];
     const hidx = {};
     header.forEach((h,i) => hidx[h] = i);
-    const hasAmount = 'Amount' in hidx;
-    const costCols = ['Provider Cost','Shipping Cost','Insurance Cost','Taxes','External Fees'];
-    const hasCost = hasAmount && costCols.every(c => c in hidx);
-    const endRow = (bi+1 < headerPositions.length) ? headerPositions[bi+1] : rows.length;
+    if(!('Affiliate Name' in hidx) || !('Action Type' in hidx) || !('Gross' in hidx)) return;
+    sheetsLidas++;
 
-    for(let ridx = hpos+1; ridx < endRow; ridx++){
-      const row = rows[ridx];
+    for(let i=1; i<rows.length; i++){
+      const row = rows[i];
       if(!row) continue;
-      const vals = row.slice(1);
-      const name = vals[hidx['Affiliate Name']];
-      if(!name) continue;
-      const nkey = normName(name);
+      const nome = row[hidx['Affiliate Name']];
+      if(!nome) continue;
+      const nkey = normName(nome);
       if(!nkey || isExcludedName(nkey)) continue;
 
-      const declinedRaw = vals[hidx['Was Declined']];
-      const declined = (declinedRaw == 1 || declinedRaw === '1' || declinedRaw === true);
-      if(declined) continue;
+      const canceledRaw = row[hidx['Was Canceled']];
+      if(canceledRaw == 1 || canceledRaw === '1' || canceledRaw === true) continue;
 
-      const dateRaw = vals[hidx['Date Created']];
-      if(!dateRaw) continue;
-      const dt = new Date(dateRaw);
-      if(isNaN(dt.getTime())) continue;
+      const actionType = row[hidx['Action Type']];
+      if(!byAff[nkey]) byAff[nkey] = {nome, vendas:0, faturamento:0, produtos:new Set()};
+      const rec = byAff[nkey];
 
-      const amount = hasAmount ? (parseFloat(vals[hidx['Amount']]) || 0) : 0;
-      let net = null;
-      if(hasCost){
-        const pc = parseFloat(vals[hidx['Provider Cost']])||0;
-        const sc = parseFloat(vals[hidx['Shipping Cost']])||0;
-        const ic = parseFloat(vals[hidx['Insurance Cost']])||0;
-        const tx = parseFloat(vals[hidx['Taxes']])||0;
-        const ef = parseFloat(vals[hidx['External Fees']])||0;
-        net = amount - pc - sc - ic - tx - ef;
+      if(actionType === 'neworder'){
+        rec.vendas++;
+        rec.faturamento += parseFloat(row[hidx['Gross']]) || 0;
+        rec.produtos.add(produto);
+      } else if(actionType === 'refund'){
+        rec.faturamento -= parseFloat(row[hidx['Refund Amount']]) || 0;
+      } else if(actionType === 'chargeback'){
+        rec.faturamento -= parseFloat(row[hidx['Chargeback Amount']]) || 0;
       }
-
-      if(!monthlyByAff[nkey]) monthlyByAff[nkey] = {nome:name, aug:0, sep:0, augNet:0, sepNet:0, hasCost:false, lastSale:null, produtos:new Set(), orders:0, daily:{}};
-      const rec = monthlyByAff[nkey];
-      rec.produtos.add(account);
-      rec.orders++;
-      const dayKey = dt.toISOString().slice(0,10);
-      if(!rec.daily[dayKey]) rec.daily[dayKey] = {orders:0, volume:0};
-      rec.daily[dayKey].orders++;
-      rec.daily[dayKey].volume = Math.round((rec.daily[dayKey].volume + amount)*100)/100;
-      if(hasCost) rec.hasCost = true;
-      const month = dt.getMonth()+1;
-      if(month === 8){ rec.aug += amount; if(net!==null) rec.augNet += net; }
-      else if(month === 9){ rec.sep += amount; if(net!==null) rec.sepNet += net; }
-      if(!rec.lastSale || dt > rec.lastSale) rec.lastSale = dt;
     }
   });
 
-  const refDate = new Date(); // "hoje" do navegador
-  let updatedCount = 0, newCount = 0;
-  const existingKeys = new Set(DATA.map(e => normName(e.nome)));
+  if(sheetsLidas === 0){
+    alert('Não encontrei nenhuma aba com as colunas esperadas (Affiliate Name, Action Type, Gross) — confira se é o Relatorio_BuyGoods certo.');
+    return;
+  }
 
-  Object.keys(monthlyByAff).forEach(key => {
-    const rec = monthlyByAff[key];
-    const diasSemVender = rec.lastSale ? Math.floor((refDate - rec.lastSale)/86400000) : null;
-    let tier = 'sem_venda_2026';
-    if(diasSemVender !== null){
-      if(diasSemVender <= 7) tier = 'recente';
-      else if(diasSemVender <= 15) tier = 'atencao';
-      else if(diasSemVender <= 30) tier = 'critico';
-      else tier = 'sumido';
+  const keys = Object.keys(byAff);
+  const existingKeys = new Set(DATA.map(e => normName(e.nome)));
+  let updatedCount = 0, newCount = 0;
+
+  keys.forEach(key => {
+    const rec = byAff[key];
+    const faturamento = Math.round(rec.faturamento*100)/100;
+    const produtos = Array.from(rec.produtos);
+
+    // faturamento por dia (mesma estrutura usada pelo card de detalhes e pelo seletor de mês)
+    if(!revenueDaily[key]) revenueDaily[key] = {};
+    revenueDaily[key][dayKey] = {vendas: rec.vendas, faturamento, produtos};
+    revenueNames[key] = rec.nome;
+
+    // atualiza última venda / dias sem vender / status incrementalmente (acumula dia a dia)
+    let upd = importUpdates[key];
+    if(!upd){
+      upd = {
+        nome: rec.nome, volume_ago:null, volume_set:null, net_ago:null, net_set:null, tem_dado_custo:false,
+        ultima_venda:null, dias_sem_vender:null, tier:'sem_venda_2026',
+        confirmado:false, total_pedidos:0, volume_total:0, produtos:[], streak_diario:0, dados_diarios:{}
+      };
     }
-    importUpdates[key] = {
-      nome: rec.nome,
-      volume_ago: Math.round(rec.aug*100)/100,
-      volume_set: Math.round(rec.sep*100)/100,
-      net_ago: rec.hasCost ? Math.round(rec.augNet*100)/100 : null,
-      net_set: rec.hasCost ? Math.round(rec.sepNet*100)/100 : null,
-      tem_dado_custo: rec.hasCost,
-      ultima_venda: rec.lastSale ? rec.lastSale.toISOString().slice(0,10) : null,
-      dias_sem_vender: diasSemVender,
-      tier: tier,
-      confirmado: true,
-      total_pedidos: rec.orders,
-      volume_total: Math.round((rec.aug+rec.sep)*100)/100,
-      produtos: Array.from(rec.produtos),
-      streak_diario: streakDiario_(rec.daily, rec.lastSale),
-      dados_diarios: rec.daily
-    };
+    upd.ultima_venda = fmtDate_(upd.ultima_venda) || null; // sanitiza caso tenha vindo do Sheets como timestamp
+    if(!upd.dados_diarios) upd.dados_diarios = {};
+    upd.dados_diarios[dayKey] = {orders: rec.vendas, volume: faturamento};
+    if(rec.vendas > 0){
+      upd.confirmado = true;
+      upd.total_pedidos = (upd.total_pedidos||0) + rec.vendas;
+      upd.volume_total = Math.round(((upd.volume_total||0) + faturamento)*100)/100;
+      if(!upd.ultima_venda || dayKey > upd.ultima_venda) upd.ultima_venda = dayKey;
+    }
+    const prodSet = new Set(upd.produtos||[]);
+    produtos.forEach(p => prodSet.add(p));
+    upd.produtos = Array.from(prodSet);
+    const {dias, tier} = recalcTierFromLastSale_(upd.ultima_venda);
+    upd.dias_sem_vender = dias;
+    upd.tier = tier;
+    upd.streak_diario = streakDiario_(upd.dados_diarios, upd.ultima_venda ? new Date(upd.ultima_venda) : null);
+    upd.nome = rec.nome;
+    importUpdates[key] = upd;
+
     if(existingKeys.has(key)) updatedCount++; else newCount++;
   });
 
   saveLS(LS_UPDATES, importUpdates);
+  saveLS(LS_REVENUE, revenueDaily);
+  saveLS(LS_REVENUE_NAMES, revenueNames);
   lastImportInfo = {filename, date: new Date().toISOString(), updated: updatedCount, novos: newCount};
   saveLS(LS_IMPORT_INFO, lastImportInfo);
 
   DATA = buildData();
+  updateMonthOptions();
+  selectedMonth = document.getElementById('monthFilter').value;
   applyFilters();
   renderImportInfo();
-  showToast(`Importado: ${updatedCount} atualizados, ${newCount} novos sem contato` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
+  showToast(`Importado ${dayKey}: ${updatedCount} atualizados, ${newCount} novos sem contato` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
 
   if(APPS_SCRIPT_URL){
-    const batch = Object.keys(monthlyByAff).map(k => {
-      const rec = Object.assign({}, importUpdates[k]);
+    const importBatch = keys.map(key => {
+      const rec = Object.assign({}, importUpdates[key]);
       rec.dados_diarios = JSON.stringify(rec.dados_diarios || {});
       return rec;
     });
-    apiPost('importBatch', batch).then(res => {
-      if(res && res.ok){ syncStatus='ok'; showToast(`Sincronizado: ${res.processed} afiliados no Google Sheets ✓`); }
+    const revenueBatch = keys.map(key => ({nome: byAff[key].nome, dados_json: JSON.stringify(revenueDaily[key])}));
+    Promise.all([apiPost('importBatch', importBatch), apiPost('importRevenueBatch', revenueBatch)]).then(([r1, r2]) => {
+      if(r1 && r1.ok && r2 && r2.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
       else { syncStatus='erro'; showToast('Import salvo localmente, mas não sincronizou com o Sheets ainda'); }
       renderSyncBadge();
     });
