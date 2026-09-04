@@ -944,7 +944,8 @@ function receitaHistorica_(e){
 }
 function computeTopParados(){
   return DATA
-    .filter(e => (e.tier==='atencao' || e.tier==='critico' || e.tier==='sumido') && receitaHistorica_(e) > 0)
+    .filter(e => (e.tier==='atencao' || e.tier==='critico' || e.tier==='sumido')
+      && receitaHistorica_(e) > 0 && !isExcludedName(normName(e.nome)))
     .sort((a,b) => receitaHistorica_(b) - receitaHistorica_(a))
     .slice(0, 60);
 }
@@ -1416,7 +1417,7 @@ function renderDetailChart(entry, period){
 }
 
 // ---------- Importar exportação diária (PEDIDOS_AAAA-MM-DD.xlsx) ----------
-const EXCLUDE_PATTERNS = ['helpgrid','maxweb','mwe','tiger offers','jose moraes','gestor'];
+const EXCLUDE_PATTERNS = ['helpgrid','maxweb','mwe','tiger offers','jose moraes','gestor','full negocios'];
 function isExcludedName(n){
   if(!n) return true;
   return EXCLUDE_PATTERNS.some(p => n.includes(p));
