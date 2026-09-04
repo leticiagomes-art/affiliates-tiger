@@ -315,7 +315,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -404,6 +404,17 @@ function doPost(e) {
       const arr = body.data || [];
       arr.forEach(pair => { if (pair.from && pair.to) mergeAffiliateKey_(pair.from, pair.to); });
       result.processed = arr.length;
+    } else if (action === 'mergePdfSnapshot') {
+      // body.data = { imports: [{nome_norm, nome, ultima_venda, produtos}], lifetime: [{nome_norm, nome, gross}] }
+      // atualização pontual a partir de um relatório PDF (ex: "afiliados sem vendas") — mescla
+      // campo a campo, não sobrescreve a linha inteira (preserva total_pedidos/dados_diarios/etc.)
+      const d = body.data || {};
+      const imp = (d.imports || []).map(r => Object.assign({}, r, { atualizado_em: now }));
+      const life = (d.lifetime || []).map(r => Object.assign({}, r, { atualizado_em: now }));
+      if (imp.length) bulkMergeSheet_(SHEET_IMPORT, 'nome_norm', imp);
+      if (life.length) bulkMergeSheet_(SHEET_LIFETIME, 'nome_norm', life);
+      result.processedImports = imp.length;
+      result.processedLifetime = life.length;
     } else {
       result = { ok: false, error: 'ação desconhecida: ' + action };
     }
