@@ -412,18 +412,15 @@ const OFFERS = [
   {nome:"AlphaErec", linha:"Gelatin Trick",
    vsl:"https://drive.google.com/drive/u/0/folders/1cAL7np-HsxiRmpnXO5CiIeOkj7UjKReq",
    ads:"https://drive.google.com/drive/folders/1fNdcgP9s3dfd2vUJKPye6MHDQDdHQt_v",
-   desc:"Performance masculina, uma das ofertas que mais está puxando volume agora.",
-   script:"E aí, tudo certo? Faz um tempinho que a gente não troca uma ideia por aqui 🐯 Vi que você rodou AlphaErec antes — hoje ela tá com um ângulo novo (Gelatin Trick) escalando bem forte. Bora eu te passar a VSL e os criativos atualizados e você dá uma olhada com calma?"},
+   desc:"Performance masculina, uma das ofertas que mais está puxando volume agora."},
   {nome:"MounjaMelt", linha:"Gelatin Trick",
    vsl:"https://drive.google.com/drive/u/0/folders/1afXIgFsFdpfh2pUdzf05FN7tk2ddj9ir",
    ads:"https://drive.google.com/drive/folders/1aouCjkO85xcpv5aApzFQfZltImKhdEtY",
-   desc:"Emagrecimento, mesmo ângulo Gelatin Trick que está performando em AlphaErec.",
-   script:"Opa, tudo bem? Notei que faz um tempo que você não roda nada por aqui e queria saber como você tá 🙂 Se fizer sentido, a MounjaMelt tá com um criativo novo (Gelatin Trick) que tá escalando bonito nas últimas semanas. Te mando a VSL e os ads pra você conferir?"},
+   desc:"Emagrecimento, mesmo ângulo Gelatin Trick que está performando em AlphaErec."},
   {nome:"MaroBrain", linha:"Rosemary Trick",
    vsl:"https://drive.google.com/drive/folders/1XPLieeoVZr84M7RgEc3tNQyO3xxvF99S",
    ads:"https://drive.google.com/drive/folders/1E3B2P41OqmIfT7c2jTbU1yX0wvCixGxw",
-   desc:"Memória/foco, ângulo Rosemary Trick, entre as 3 ofertas mais recentes escalando.",
-   script:"Fala! Passando aqui pra saber como você tá e se ainda faz sentido rodar tráfego com a gente 🐯 Lançamos um ângulo novo pra MaroBrain (Rosemary Trick) que tá com resultado bem sólido. Quer que eu te mande a VSL e os ads pra dar uma olhada?"}
+   desc:"Memória/foco, ângulo Rosemary Trick, entre as 3 ofertas mais recentes escalando."}
 ];
 
 // ---------- Persistência local (localStorage) ----------
@@ -721,13 +718,23 @@ function pickOffer(produtos){
   const candidates = OFFERS.filter(o => !p.includes(o.nome.toLowerCase()));
   return candidates.length ? candidates[0] : OFFERS[0];
 }
+// Tom humanizado, casual, adaptado por segmento (mesma estrutura, saudação + CTA final iguais —
+// só muda a frase do meio, que reconhece a situação real do afiliado antes de puxar a oferta).
+function scriptText_(entry, offer){
+  const nomeAbertura = (entry.nome||'').split(' ')[0];
+  let meio;
+  if(entry.tier === 'sem_venda_2026'){
+    meio = `Vi seu contato aqui na nossa lista de afiliados, mas não achei nenhuma venda sua registrada esse ano — pode ser até que você nem lembre que ainda tá cadastrado com a gente haha! De qualquer forma, separei uma oferta bem escalada agora (a ${offer.nome}) e lembrei de você.`;
+  } else if(entry.tier === 'ativo'){
+    meio = `Vi que você tá mandando bem por aqui, e separei mais uma oferta bem escalada (a ${offer.nome}) — na hora lembrei de você!`;
+  } else {
+    meio = `Faz um tempinho que a gente não troca uma ideia por aqui — separei uma oferta bem escalada (a ${offer.nome}) e na hora lembrei de você.`;
+  }
+  return `Boooom dia, ${nomeAbertura}! Espero que esteja bem, mas espero que fique melhor ainda haha! ${meio} Prefere que eu te encaminhe as informações por aqui?`;
+}
 function buildScript(entry){
   const offer = pickOffer(entry.produtos);
-  const nomeAbertura = (entry.nome||'').split(' ')[0];
-  if(!entry.confirmado){
-    return {offer, text: `Oi ${nomeAbertura}! Tudo bem? Vi seu contato aqui na nossa lista de afiliados, mas não achei nenhuma venda sua registrada esse ano — se ainda não rodou ou faz tempo que não roda com a gente, ${offer.desc.charAt(0).toLowerCase()+offer.desc.slice(1)} Quer que eu te mande a VSL e os ads da ${offer.nome} (${offer.linha}) pra você começar?`};
-  }
-  return {offer, text: `Oi ${nomeAbertura}! ` + offer.script};
+  return {offer, text: scriptText_(entry, offer)};
 }
 
 function renderStats(list){
@@ -944,8 +951,7 @@ function renderTable(){
         box.querySelector('.regen').addEventListener('click', () => {
           const others = OFFERS.filter(o => o.nome !== offer.nome);
           const newOffer = others[Math.floor(Math.random()*others.length)];
-          const nomeAbertura = (entry.nome||'').split(' ')[0];
-          const newText = `Oi ${nomeAbertura}! ` + newOffer.script;
+          const newText = scriptText_(entry, newOffer);
           box.innerHTML = `<b>Sugestão (oferta: ${newOffer.nome} — ${newOffer.linha}):</b><br>${escapeHtml(newText)}
             <div class="script-btns"><button class="copy-this2">Copiar script</button></div>`;
           box.querySelector('.copy-this2').addEventListener('click', () => { copyText(newText); showToast('Script copiado!'); });
