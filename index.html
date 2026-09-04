@@ -5,16 +5,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Reativação de Afiliados — TigerOffers (contato máximo)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
     --navy:#1F3864; --navy-dark:#152845; --blue:#2F5597; --orange:#F26B1D; --orange-dark:#D9560F;
     --green:#1E7B34; --green-bg:#E3F5E7; --yellow:#8A6D00; --yellow-bg:#FFF6D9;
     --red:#B3261E; --red-bg:#FCE8E6; --dark:#5A1E17; --dark-bg:#F0DAD8;
     --line:#E3E6EC; --ink:#181B22; --muted:#5B6472; --bg:#F4F5F8; --surface:#FFFFFF;
+    --row-even:#FAFBFC; --row-hover:#F0F3F9;
+    --wa-bg:#E4F8EC; --wa-fg:#0F8A3F; --tg-bg:#E5F2FF; --tg-fg:#1477CC; --bg-pill-bg:#F0EBFA; --bg-pill-fg:#5B3FA8;
+    --script-box-bg:#FAFBFC; --script-box-fg:#333;
+    --contact-log-bg:#F0F4FF; --contact-log-fg:#173A66;
+    --alert-bg:var(--yellow-bg); --alert-border:#F0DE9E; --alert-fg:#6b5600;
+    --alert-blue-bg:#E7F0FE; --alert-blue-border:#BBD6F7; --alert-blue-fg:#173A66;
+    --semvenda-bg:#EAECF2; --semvenda-fg:#4A5468; --toast-bg:#181B22; --toast-fg:#fff;
+  }
+  /* Paleta escura — estrutura em camadas (bg de página != superfície de cartão/tabela != borda),
+     baseada no app do Penpot (github.com/penpot/penpot): #18181A de fundo, #212426 de superfície,
+     acento clareado em vez de invertido puro. Cores da marca Tiger (navy/laranja) mantidas. */
+  :root[data-theme="dark"]{
+    --bg:#18181A; --surface:#212426; --line:#33383D; --ink:#F0F0F2; --muted:#9AA3AF;
+    --orange:#FF7D33; --orange-dark:#F26B1D; --blue:#5B8DEF; --navy:#3D6BB3;
+    --green:#4ADE80; --green-bg:rgba(30,123,52,.22);
+    --yellow:#FFCA3A; --yellow-bg:rgba(138,109,0,.22);
+    --red:#FF6B5B; --red-bg:rgba(179,38,30,.22);
+    --dark:#FFA98A; --dark-bg:rgba(90,30,23,.32);
+    --row-even:rgba(255,255,255,.025); --row-hover:rgba(255,255,255,.05);
+    --wa-bg:rgba(15,138,63,.22); --wa-fg:#4ADE80; --tg-bg:rgba(20,119,204,.22); --tg-fg:#7CC4FF;
+    --bg-pill-bg:rgba(91,63,168,.28); --bg-pill-fg:#C9B6FF;
+    --script-box-bg:rgba(255,255,255,.04); --script-box-fg:var(--ink);
+    --contact-log-bg:rgba(47,85,151,.22); --contact-log-fg:#9CC3FF;
+    --alert-bg:rgba(227,181,5,.14); --alert-border:rgba(240,222,158,.35); --alert-fg:#FFD666;
+    --alert-blue-bg:rgba(47,85,151,.18); --alert-blue-border:rgba(187,214,247,.3); --alert-blue-fg:#BFE0FF;
+    --semvenda-bg:rgba(255,255,255,.08); --semvenda-fg:#B7C0CE; --toast-bg:#F0F0F2; --toast-fg:#181B22;
   }
   *{box-sizing:border-box;}
-  body{margin:0; font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); font-size:13px;}
+  body{margin:0; font-family:'Work Sans','Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); font-size:13px; transition:background .15s ease, color .15s ease;}
   a{color:inherit;}
+  .theme-toggle{display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; border-radius:5px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04); color:#C7D0E0; font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit;}
+  .theme-toggle:hover{background:rgba(255,255,255,.09);}
+  .theme-toggle .icon{font-size:13px;}
 
   /* ---------- app shell ---------- */
   .app{min-height:100vh;}
@@ -23,6 +55,7 @@
   .sidebar-brand .word{font-weight:800; font-size:14px; letter-spacing:.09em; text-transform:uppercase;}
   .sidebar-brand .stripe{width:26px; height:3px; background:var(--orange); margin-top:9px; border-radius:1px;}
   .sidebar-brand small{display:block; color:#93A0BD; font-weight:400; font-size:11px; margin-top:9px; line-height:1.5;}
+  .brand-badge{display:inline-flex; align-items:center; gap:5px; margin-top:11px; padding:3px 9px; border-radius:999px; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.05); color:#C7D0E0; font-size:10px; font-weight:600; letter-spacing:.03em;}
   .nav-section{padding:10px 10px 4px;}
   .nav-heading{font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:#7C88A5; padding:6px 10px 4px; font-weight:700;}
   .nav-item{display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:5px; color:#C7D0E0; font-size:12px; font-weight:600; cursor:pointer; margin-bottom:1px; border:1px solid transparent; user-select:none;}
@@ -36,23 +69,23 @@
   .stat-chip{background:rgba(255,255,255,0.055); border:1px solid rgba(255,255,255,0.14); border-radius:6px; padding:7px 10px; text-align:left; width:100%;}
   .stat-chip b{display:block; font-size:15px; font-weight:800;}
   .stat-chip span{font-size:10px; color:#93A0BD; text-transform:uppercase; letter-spacing:.04em;}
-  .sidebar-sync{padding:2px 20px 18px;}
+  .sidebar-sync{padding:2px 20px 18px; display:flex; flex-direction:column; gap:8px;}
   #syncBadge{display:block; font-size:10.5px; padding:6px 9px; border-radius:5px; font-weight:700; text-align:left;}
   #syncBadge .dot{display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px; vertical-align:middle;}
 
   .main{margin-left:238px; min-width:0;}
   .wrap{max-width:1360px; margin:0 auto; padding:22px 26px 60px;}
   .table-scroll{overflow-x:auto; border-radius:8px;}
-  .alert{background:var(--yellow-bg); border:1px solid #F0DE9E; color:#6b5600; border-left:4px solid #E3B505; border-radius:6px; padding:12px 16px; margin:16px 0; font-size:12.5px; line-height:1.55;}
-  .alert.blue{background:#E7F0FE; border-color:#BBD6F7; color:#173A66; border-left-color:var(--blue);}
+  .alert{background:var(--alert-bg); border:1px solid var(--alert-border); color:var(--alert-fg); border-left:4px solid #E3B505; border-radius:6px; padding:12px 16px; margin:16px 0; font-size:12.5px; line-height:1.55;}
+  .alert.blue{background:var(--alert-blue-bg); border-color:var(--alert-blue-border); color:var(--alert-blue-fg); border-left-color:var(--blue);}
   .alert b{color:inherit;}
-  h2.section-title{color:var(--ink); font-size:14px; font-weight:700; margin:24px 0 11px; display:flex; align-items:center; gap:8px; letter-spacing:.01em;}
+  h2.section-title{color:var(--ink); font-size:16.5px; font-weight:800; margin:24px 0 11px; display:flex; align-items:center; gap:8px; letter-spacing:-.005em;}
   h2.section-title .bar{width:3px; height:14px; background:var(--orange); border-radius:1px; display:inline-block;}
   .row-name{cursor:pointer;} .row-name:hover{text-decoration:underline; color:var(--navy);}
   .detail-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; margin:10px 0 14px;}
   .detail-grid label{margin:0 0 4px;}
   .period-tabs{display:flex; gap:5px; margin:14px 0 10px; flex-wrap:wrap;}
-  .period-tabs button{padding:5px 11px; border-radius:5px; border:1px solid var(--line); background:#fff; color:var(--ink); font-size:11.5px; font-weight:600; cursor:pointer;}
+  .period-tabs button{padding:5px 11px; border-radius:5px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:11.5px; font-weight:600; cursor:pointer;}
   .period-tabs button.active{background:var(--navy); color:#fff; border-color:var(--navy);}
   .chart-summary{font-size:12px; color:var(--muted); margin-bottom:8px;}
   .chart-summary b{color:var(--ink);}
@@ -64,13 +97,13 @@
   .chart-labels span{flex:1; text-align:center; font-size:9.5px; color:var(--muted); min-width:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .chart-empty{color:var(--muted); font-size:12.5px; padding:20px 0; text-align:center;}
   .toolbar{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:11px 13px; display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-bottom:11px;}
-  .toolbar input[type=text]{flex:1; min-width:180px; padding:7px 10px; border:1px solid var(--line); border-radius:5px; font-size:12.5px;}
-  .toolbar select{padding:7px 8px; border:1px solid var(--line); border-radius:5px; font-size:12px; background:#fff;}
+  .toolbar input[type=text]{flex:1; min-width:180px; padding:7px 10px; border:1px solid var(--line); border-radius:5px; font-size:12.5px; background:var(--surface); color:var(--ink);}
+  .toolbar select{padding:7px 8px; border:1px solid var(--line); border-radius:5px; font-size:12px; background:var(--surface); color:var(--ink);}
   .toolbar button{padding:7px 12px; border-radius:5px; border:none; font-weight:700; font-size:12px; cursor:pointer;}
   .btn-navy{background:var(--navy); color:#fff;} .btn-navy:hover{background:#16294c;}
   .btn-orange{background:var(--orange); color:#fff;} .btn-orange:hover{background:var(--orange-dark);}
   #addAffiliateBtn{border:none; border-radius:999px; padding:9px 18px; font-weight:700; font-size:12.5px; cursor:pointer;}
-  .btn-ghost{background:#fff; color:var(--navy); border:1px solid var(--navy) !important;}
+  .btn-ghost{background:var(--surface); color:var(--navy); border:1px solid var(--navy) !important;}
   .legend{display:flex; gap:13px; font-size:11px; color:var(--muted); margin:0 2px 10px; flex-wrap:wrap; align-items:center;}
   .legend .dot{display:inline-block; width:7px; height:7px; border-radius:2px; margin-right:5px;}
   .legend .sep{color:var(--line);}
@@ -78,21 +111,21 @@
   thead th{background:var(--navy); color:#fff; text-align:left; padding:9px 8px; font-size:10.3px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;}
   tbody td{padding:9px 8px; font-size:12.3px; border-bottom:1px solid var(--line); vertical-align:middle;}
   tbody td:first-child{border-left:4px solid transparent;}
-  tbody tr:nth-child(even){background:#FAFBFC;}
-  tbody tr:hover{background:#F0F3F9;}
+  tbody tr:nth-child(even){background:var(--row-even);}
+  tbody tr:hover{background:var(--row-hover);}
   .badge{display:inline-block; padding:2.5px 7px; border-radius:4px; font-size:10px; font-weight:700;}
   .b-ativo{background:var(--green-bg); color:var(--green);}
   .b-atencao{background:var(--yellow-bg); color:var(--yellow);}
   .b-critico{background:var(--red-bg); color:var(--red);}
   .b-sumido{background:var(--dark-bg); color:var(--dark);}
-  .b-sem_venda_2026{background:#EAECF2; color:#4A5468;}
+  .b-sem_venda_2026{background:var(--semvenda-bg); color:var(--semvenda-fg);}
   .conf{font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:4px; text-transform:uppercase;}
-  .conf-alta{background:#E3F5E7; color:#1E7B34;}
-  .conf-media{background:#FFF6D9; color:#8A6D00;}
-  .conf-baixa{background:#FCE8E6; color:#B3261E;}
+  .conf-alta{background:var(--green-bg); color:var(--green);}
+  .conf-media{background:var(--yellow-bg); color:var(--yellow);}
+  .conf-baixa{background:var(--red-bg); color:var(--red);}
   .contact-links a{display:inline-flex; align-items:center; gap:3px; text-decoration:none; font-size:11.3px; font-weight:600; padding:3px 7px; border-radius:4px; margin:2px 3px 2px 0;}
-  .wa{background:#E4F8EC; color:#0F8A3F;} .tg{background:#E5F2FF; color:#1477CC;}
-  .bg-pill{display:inline-block; font-size:11px; font-weight:600; padding:3px 7px; border-radius:4px; background:#F0EBFA; color:#5B3FA8; margin-top:2px;}
+  .wa{background:var(--wa-bg); color:var(--wa-fg);} .tg{background:var(--tg-bg); color:var(--tg-fg);}
+  .bg-pill{display:inline-block; font-size:11px; font-weight:600; padding:3px 7px; border-radius:4px; background:var(--bg-pill-bg); color:var(--bg-pill-fg); margin-top:2px;}
   .no-contact{color:var(--muted); font-size:11px; font-style:italic;}
   .row-name{font-weight:700; color:var(--ink);}
   .row-sub{color:var(--muted); font-size:10.5px;}
@@ -100,18 +133,18 @@
   .actions{display:flex; gap:5px; flex-wrap:wrap;}
   .actions button{background:none; border:1px solid var(--line); border-radius:5px; padding:4px 8px; font-size:10.8px; cursor:pointer; color:var(--navy); font-weight:600;}
   .actions button:hover{background:var(--navy); border-color:var(--navy); color:#fff;}
-  .actions button.danger{border-color:#F3C6C1; color:#B3261E;}
-  .actions button.danger:hover{background:#B3261E; border-color:#B3261E; color:#fff;}
+  .actions button.danger{border-color:var(--red-bg); color:var(--red);}
+  .actions button.danger:hover{background:var(--red); border-color:var(--red); color:#fff;}
   .script-row{display:none;} .script-row.open{display:table-row;}
-  .script-box{background:#FAFBFC; border:1px dashed var(--line); border-radius:6px; padding:11px 13px; font-size:12.3px; line-height:1.5; color:#333; margin:4px 0;}
+  .script-box{background:var(--script-box-bg); border:1px dashed var(--line); border-radius:6px; padding:11px 13px; font-size:12.3px; line-height:1.5; color:var(--script-box-fg); margin:4px 0;}
   .script-box .script-btns{margin-top:7px; display:flex; gap:7px;}
-  .script-box .script-btns button{font-size:11px; padding:5px 9px; border-radius:5px; border:1px solid var(--blue); background:#fff; color:var(--blue); cursor:pointer; font-weight:600;}
+  .script-box .script-btns button{font-size:11px; padding:5px 9px; border-radius:5px; border:1px solid var(--blue); background:var(--surface); color:var(--blue); cursor:pointer; font-weight:600;}
   .script-box .script-btns button:hover{background:var(--blue); color:#fff;}
-  .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:9px 16px; border-radius:6px; font-size:12.3px; box-shadow:0 6px 20px rgba(0,0,0,0.22); opacity:0; pointer-events:none; transition:opacity .25s ease; z-index:100;}
+  .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--toast-bg); color:var(--toast-fg); padding:9px 16px; border-radius:6px; font-size:12.3px; box-shadow:0 6px 20px rgba(0,0,0,0.22); opacity:0; pointer-events:none; transition:opacity .25s ease; z-index:100;}
   .toast.show{opacity:1;}
   .footer-note{text-align:center; color:var(--muted); font-size:11px; margin-top:24px;}
   .pager{display:flex; justify-content:center; gap:8px; margin-top:14px;}
-  .pager button{padding:6px 12px; border-radius:5px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:12px;}
+  .pager button{padding:6px 12px; border-radius:5px; border:1px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer; font-size:12px;}
   .pager button.active{background:var(--navy); color:#fff; border-color:var(--navy);}
   .pager button:disabled{opacity:.4; cursor:default;}
   .trend-up{color:var(--green); font-weight:700;}
@@ -120,15 +153,15 @@
   .trend-cell{font-size:11.3px; line-height:1.5;}
   .modal-bg{display:none; position:fixed; inset:0; background:rgba(15,25,45,0.5); z-index:50; align-items:center; justify-content:center; padding:16px;}
   .modal-bg.show{display:flex;}
-  .modal{background:#fff; border-radius:10px; padding:22px 24px; width:100%; max-width:440px; box-shadow:0 16px 44px rgba(0,0,0,0.22); max-height:90vh; overflow-y:auto;}
+  .modal{background:var(--surface); border-radius:10px; padding:22px 24px; width:100%; max-width:440px; box-shadow:0 16px 44px rgba(0,0,0,0.22); max-height:90vh; overflow-y:auto;}
   .modal h3{margin:0 0 4px; color:var(--ink); font-size:15.5px;}
   .modal p.sub{color:var(--muted); font-size:12px; margin:0 0 14px; line-height:1.5;}
   .modal label{display:block; font-size:11.3px; font-weight:700; color:var(--ink); margin:9px 0 4px;}
-  .modal input, .modal select, .modal textarea{width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:5px; font-size:13px; font-family:inherit;}
+  .modal input, .modal select, .modal textarea{width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:5px; font-size:13px; font-family:inherit; background:var(--surface); color:var(--ink);}
   .modal textarea{resize:vertical; min-height:60px;}
   .modal .modal-actions{display:flex; gap:9px; margin-top:16px;}
   .modal .modal-actions button{flex:1; padding:9px; border-radius:5px; border:none; font-weight:700; cursor:pointer;}
-  .contact-log{background:#F0F4FF; border-left:3px solid var(--blue); border-radius:4px; padding:6px 9px; font-size:11px; color:#173A66; margin-top:5px; line-height:1.4;}
+  .contact-log{background:var(--contact-log-bg); border-left:3px solid var(--blue); border-radius:4px; padding:6px 9px; font-size:11px; color:var(--contact-log-fg); margin-top:5px; line-height:1.4;}
   .file-input-btn{position:relative; overflow:hidden; display:inline-block;}
   .file-input-btn input[type=file]{position:absolute; left:0; top:0; opacity:0; width:100%; height:100%; cursor:pointer;}
   .banner-import{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:12px 15px; margin-bottom:11px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
@@ -155,6 +188,16 @@
     .main{margin-left:0;}
   }
 </style>
+<script>
+  // aplica o tema antes da primeira pintura da página, pra não piscar claro→escuro
+  (function(){
+    try {
+      const saved = localStorage.getItem('tiger_theme_v1');
+      const theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if(theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch(e){}
+  })();
+</script>
 </head>
 <body>
 
@@ -163,6 +206,7 @@
   <div class="sidebar-brand">
     <div class="word">Tiger Offers</div>
     <div class="stripe"></div>
+    <span class="brand-badge">🐯 painel ao vivo</span>
     <small>Reativação de afiliados — universo completo de contatos, cruzado com venda real quando existe (Orders_2026)</small>
   </div>
   <div class="nav-section">
@@ -200,16 +244,18 @@
   </div>
   <div id="headerStats"></div>
   <div class="sidebar-sync">
+    <button class="theme-toggle" id="themeToggle" type="button">
+      <span class="icon" id="themeToggleIcon">🌙</span>
+      <span id="themeToggleLabel">Modo escuro</span>
+    </button>
     <span id="syncBadge"></span>
   </div>
 </aside>
 <main class="main">
 <div class="wrap">
 
-  <h2 class="section-title"><span class="bar"></span>Todos os afiliados com contato conhecido (543, priorizando quem tem venda real confirmada)</h2>
-
   <div class="period-tabs" id="mainViewTabs">
-    <button class="active" data-view="tabela">Tabela</button>
+    <button class="active" data-view="tabela">Geral</button>
     <button data-view="topparados">🔥 Top parados em faturamento</button>
   </div>
 
@@ -222,14 +268,6 @@
     <span class="file-input-btn btn-navy" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px; color:#fff;">
       Importar relatório BuyGoods
       <input type="file" id="buyGoodsImportFile" accept=".xlsx,.xls,.csv">
-    </span>
-    <span class="file-input-btn btn-ghost" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px;">
-      Importar base histórica (Master Affiliates)
-      <input type="file" id="masterImportFile" accept=".xlsx,.xls,.csv">
-    </span>
-    <span class="file-input-btn btn-ghost" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px;">
-      Atualizar contatos (planilha de Telegram)
-      <input type="file" id="contactsImportFile" accept=".xlsx,.xls,.csv">
     </span>
     <button class="btn-orange" id="addAffiliateBtn">+ Inserir afiliado</button>
   </div>
@@ -1036,6 +1074,11 @@ function renderTable(){
     let faturamentoCell;
     if(mrev){
       faturamentoCell = `<span class="vol">${mrev.aproximado?'≈ ':''}${fmtMoney(mrev.faturamento)}</span><br><span class="row-sub">${mrev.aproximado ? 'aprox. (sem relatório BuyGoods desse mês)' : mrev.vendas+' venda'+(mrev.vendas===1?'':'s')}</span>`;
+    } else if(e.ultima_venda && e.ultima_venda.slice(0,7) === selectedMonth){
+      // sabemos a data da venda (veio da base de contato), mas nenhum relatório diário do
+      // BuyGoods trouxe esse dia ainda pra dar o valor em $ — não é "sem dado no mês", é
+      // "sem confirmação do valor", que é uma coisa diferente de vender em outro mês
+      faturamentoCell = `<span class="row-sub">sem valor confirmado<br>(venda em ${escapeHtml(fmtDate_(e.ultima_venda))} sem relatório BuyGoods desse dia)</span>`;
     } else {
       const vendaMes = e.ultima_venda ? e.ultima_venda.slice(0,7) : null;
       const foraDoMes = vendaMes && vendaMes !== selectedMonth;
@@ -1129,6 +1172,20 @@ function showToast(msg){
   const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
   setTimeout(()=> t.classList.remove('show'), 1800);
 }
+
+function applyThemeUI_(theme){
+  document.getElementById('themeToggleIcon').textContent = theme === 'dark' ? '☀️' : '🌙';
+  document.getElementById('themeToggleLabel').textContent = theme === 'dark' ? 'Modo claro' : 'Modo escuro';
+}
+applyThemeUI_(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  if(next === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  try { localStorage.setItem('tiger_theme_v1', next); } catch(e){}
+  applyThemeUI_(next);
+});
 
 document.querySelectorAll('#mainViewTabs button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1440,41 +1497,10 @@ document.getElementById('buyGoodsImportFile').addEventListener('change', (ev) =>
   ev.target.value = '';
 });
 
-// ---------- Importar base histórica (Master Affiliates — exportação única, sem data) ----------
-document.getElementById('masterImportFile').addEventListener('change', (ev) => {
-  const file = ev.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
-      processMasterAffiliatesImport(wb, file.name);
-    } catch(err){
-      console.error(err);
-      alert('Não consegui ler esse arquivo. Confira se é a exportação "Master Affiliates" da BuyGoods.');
-    }
-  };
-  reader.readAsBinaryString(file);
-  ev.target.value = '';
-});
-
-// ---------- Atualizar contatos (planilha de Telegram, múltiplas abas: Geral/TOP/300K/etc.) ----------
-document.getElementById('contactsImportFile').addEventListener('change', (ev) => {
-  const file = ev.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
-      processContactsImport(wb, file.name);
-    } catch(err){
-      console.error(err);
-      alert('Não consegui ler esse arquivo. Confira se é a planilha de contatos/Telegram (uma aba por lista, com colunas Nome/Telefone/User).');
-    }
-  };
-  reader.readAsBinaryString(file);
-  ev.target.value = '';
-});
+// processMasterAffiliatesImport() e processContactsImport() (mais abaixo) não têm mais botão
+// na tela — a base histórica e os contatos de Telegram já foram importados pra produção.
+// As funções ficam aqui prontas caso precise rodar de novo algum dia (basta re-adicionar
+// um <input type=file> com esses ids e um listener chamando a função correspondente).
 
 function limparValorContato_(v){
   if(v===null || v===undefined) return '';
