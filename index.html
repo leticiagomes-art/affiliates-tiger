@@ -745,10 +745,20 @@ function produtosFallback_(e){
 function monthlyRevenue_(e, monthKey){
   const daily = e.receita_diaria || {};
   const diasDoMes = Object.keys(daily).filter(d => d.slice(0,7) === monthKey);
-  if(diasDoMes.length === 0) return null; // sem nenhum dia importado nesse mês pra esse afiliado
-  let vendas = 0, faturamento = 0;
-  diasDoMes.forEach(d => { vendas += daily[d].vendas||0; faturamento += daily[d].faturamento||0; });
-  return {vendas, faturamento: Math.round(faturamento*100)/100};
+  if(diasDoMes.length > 0){
+    let vendas = 0, faturamento = 0;
+    diasDoMes.forEach(d => { vendas += daily[d].vendas||0; faturamento += daily[d].faturamento||0; });
+    return {vendas, faturamento: Math.round(faturamento*100)/100, aproximado:false};
+  }
+  // sem dado granular (relatório BuyGoods) pra esse mês — cai pro sistema antigo de Ago×Set, se bater com o mês pedido
+  const anoAtual = new Date().getFullYear();
+  if(monthKey === anoAtual+'-08' && e.volume_ago!==null && e.volume_ago!==undefined){
+    return {vendas: null, faturamento: e.volume_ago, aproximado:true};
+  }
+  if(monthKey === anoAtual+'-09' && e.volume_set!==null && e.volume_set!==undefined){
+    return {vendas: null, faturamento: e.volume_set, aproximado:true};
+  }
+  return null; // sem nenhum dado (nem granular, nem a aproximação antiga) pra esse mês
 }
 
 function trendCell(e){
@@ -824,7 +834,7 @@ function renderTable(){
     <tr>
       <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name" data-detail="${idx}">${escapeHtml(e.nome)}</span><br><span class="row-sub">${e.ultima_venda ? 'última venda '+escapeHtml(fmtDate_(e.ultima_venda)) : 'sem venda registrada'}</span></td>
       <td class="row-sub">${escapeHtml(produtosFallback_(e).join(', ')) || '—'}</td>
-      <td>${mrev ? `<span class="vol">${fmtMoney(mrev.faturamento)}</span><br><span class="row-sub">${mrev.vendas} venda${mrev.vendas===1?'':'s'}</span>` : '<span class="row-sub">sem dado no mês</span>'}</td>
+      <td>${mrev ? `<span class="vol">${mrev.aproximado?'≈ ':''}${fmtMoney(mrev.faturamento)}</span><br><span class="row-sub">${mrev.aproximado ? 'aprox. (sem relatório BuyGoods desse mês)' : mrev.vendas+' venda'+(mrev.vendas===1?'':'s')}</span>` : '<span class="row-sub">sem dado no mês</span>'}</td>
       <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}<br><span class="badge ${status.cls}" style="margin-top:3px;">${status.txt}</span></td>
       <td>${contactCell(e)}</td>
       <td class="actions">
