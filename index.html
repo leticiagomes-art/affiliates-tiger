@@ -1221,12 +1221,12 @@ function recalcTierFromLastSale_(ultimaVendaStr){
 }
 
 // ---------- Importar relatório BuyGoods (Relatorio_BuyGoods_AAAA-MM-DD.xlsx, uma aba por produto) ----------
+// Bucketiza por "Create Date" de cada linha (não pelo nome do arquivo), então funciona tanto pro
+// relatório diário (1 dia) quanto pra uma exportação com meses/ano inteiro de uma vez.
 function processBuyGoodsImport(wb, filename){
-  const m = filename.match(/(\d{4}-\d{2}-\d{2})/);
-  const dayKey = m ? m[1] : new Date().toISOString().slice(0,10);
-
-  const byAff = {}; // nome_norm -> {nome, vendas, faturamento, produtos:Set}
+  const byAff = {}; // nome_norm -> {nome, produtos:Set, daily:{dayKey:{vendas,faturamento}}}
   let sheetsLidas = 0;
+  let diasEncontrados = new Set();
 
   wb.SheetNames.forEach(produto => {
     const ws = wb.Sheets[produto];
@@ -1235,7 +1235,7 @@ function processBuyGoodsImport(wb, filename){
     const header = rows[0];
     const hidx = {};
     header.forEach((h,i) => hidx[h] = i);
-    if(!('Affiliate Name' in hidx) || !('Action Type' in hidx) || !('Gross' in hidx)) return;
+    if(!('Affiliate Name' in hidx) || !('Action Type' in hidx) || !('Gross' in hidx) || !('Create Date' in hidx)) return;
     sheetsLidas++;
 
     for(let i=1; i<rows.length; i++){
@@ -1249,24 +1249,32 @@ function processBuyGoodsImport(wb, filename){
       const canceledRaw = row[hidx['Was Canceled']];
       if(canceledRaw == 1 || canceledRaw === '1' || canceledRaw === true) continue;
 
+      const dateRaw = row[hidx['Create Date']];
+      if(!dateRaw) continue;
+      const dt = new Date(dateRaw);
+      if(isNaN(dt.getTime())) continue;
+      const dayKey = dt.toISOString().slice(0,10);
+      diasEncontrados.add(dayKey);
+
       const actionType = row[hidx['Action Type']];
-      if(!byAff[nkey]) byAff[nkey] = {nome, vendas:0, faturamento:0, produtos:new Set()};
+      if(!byAff[nkey]) byAff[nkey] = {nome, produtos:new Set(), daily:{}};
       const rec = byAff[nkey];
+      if(!rec.daily[dayKey]) rec.daily[dayKey] = {vendas:0, faturamento:0};
 
       if(actionType === 'neworder'){
-        rec.vendas++;
-        rec.faturamento += parseFloat(row[hidx['Gross']]) || 0;
+        rec.daily[dayKey].vendas++;
+        rec.daily[dayKey].faturamento += parseFloat(row[hidx['Gross']]) || 0;
         rec.produtos.add(produto);
       } else if(actionType === 'refund'){
-        rec.faturamento -= parseFloat(row[hidx['Refund Amount']]) || 0;
+        rec.daily[dayKey].faturamento -= parseFloat(row[hidx['Refund Amount']]) || 0;
       } else if(actionType === 'chargeback'){
-        rec.faturamento -= parseFloat(row[hidx['Chargeback Amount']]) || 0;
+        rec.daily[dayKey].faturamento -= parseFloat(row[hidx['Chargeback Amount']]) || 0;
       }
     }
   });
 
   if(sheetsLidas === 0){
-    alert('Não encontrei nenhuma aba com as colunas esperadas (Affiliate Name, Action Type, Gross) — confira se é o Relatorio_BuyGoods certo.');
+    alert('Não encontrei nenhuma aba com as colunas esperadas (Affiliate Name, Action Type, Gross, Create Date) — confira se é o Relatorio_BuyGoods certo.');
     return;
   }
 
@@ -1276,15 +1284,8 @@ function processBuyGoodsImport(wb, filename){
 
   keys.forEach(key => {
     const rec = byAff[key];
-    const faturamento = Math.round(rec.faturamento*100)/100;
     const produtos = Array.from(rec.produtos);
 
-    // faturamento por dia (mesma estrutura usada pelo card de detalhes e pelo seletor de mês)
-    if(!revenueDaily[key]) revenueDaily[key] = {};
-    revenueDaily[key][dayKey] = {vendas: rec.vendas, faturamento, produtos};
-    revenueNames[key] = rec.nome;
-
-    // atualiza última venda / dias sem vender / status incrementalmente (acumula dia a dia)
     let upd = importUpdates[key];
     if(!upd){
       upd = {
@@ -1295,13 +1296,25 @@ function processBuyGoodsImport(wb, filename){
     }
     upd.ultima_venda = fmtDate_(upd.ultima_venda) || null; // sanitiza caso tenha vindo do Sheets como timestamp
     if(!upd.dados_diarios) upd.dados_diarios = {};
-    upd.dados_diarios[dayKey] = {orders: rec.vendas, volume: faturamento};
-    if(rec.vendas > 0){
-      upd.confirmado = true;
-      upd.total_pedidos = (upd.total_pedidos||0) + rec.vendas;
-      upd.volume_total = Math.round(((upd.volume_total||0) + faturamento)*100)/100;
-      if(!upd.ultima_venda || dayKey > upd.ultima_venda) upd.ultima_venda = dayKey;
-    }
+    if(!revenueDaily[key]) revenueDaily[key] = {};
+
+    // grava cada dia encontrado nesse import (sobrescreve o dia se já existia — reimportar é seguro)
+    Object.keys(rec.daily).forEach(dayKey => {
+      const d = rec.daily[dayKey];
+      const faturamento = Math.round(d.faturamento*100)/100;
+      upd.dados_diarios[dayKey] = {orders: d.vendas, volume: faturamento};
+      revenueDaily[key][dayKey] = {vendas: d.vendas, faturamento, produtos};
+      if(d.vendas > 0 && (!upd.ultima_venda || dayKey > upd.ultima_venda)) upd.ultima_venda = dayKey;
+    });
+    revenueNames[key] = rec.nome;
+
+    // totais sempre recalculados a partir do histórico completo acumulado (idempotente — reimportar não duplica)
+    let totalPedidos = 0, volumeTotal = 0;
+    Object.values(upd.dados_diarios).forEach(d => { totalPedidos += d.orders||0; volumeTotal += d.volume||0; });
+    upd.total_pedidos = totalPedidos;
+    upd.volume_total = Math.round(volumeTotal*100)/100;
+    upd.confirmado = totalPedidos > 0;
+
     const prodSet = new Set(upd.produtos||[]);
     produtos.forEach(p => prodSet.add(p));
     upd.produtos = Array.from(prodSet);
@@ -1318,7 +1331,9 @@ function processBuyGoodsImport(wb, filename){
   saveLS(LS_UPDATES, importUpdates);
   saveLS(LS_REVENUE, revenueDaily);
   saveLS(LS_REVENUE_NAMES, revenueNames);
-  lastImportInfo = {filename, date: new Date().toISOString(), updated: updatedCount, novos: newCount};
+  const diasOrdenados = Array.from(diasEncontrados).sort();
+  const periodoTxt = diasOrdenados.length > 1 ? `${diasOrdenados[0]} a ${diasOrdenados[diasOrdenados.length-1]}` : (diasOrdenados[0] || '—');
+  lastImportInfo = {filename, date: new Date().toISOString(), updated: updatedCount, novos: newCount, periodo: periodoTxt};
   saveLS(LS_IMPORT_INFO, lastImportInfo);
 
   DATA = buildData();
@@ -1326,7 +1341,7 @@ function processBuyGoodsImport(wb, filename){
   selectedMonth = document.getElementById('monthFilter').value;
   applyFilters();
   renderImportInfo();
-  showToast(`Importado ${dayKey}: ${updatedCount} atualizados, ${newCount} novos sem contato` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
+  showToast(`Importado (${periodoTxt}): ${updatedCount} atualizados, ${newCount} novos sem contato` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
 
   if(APPS_SCRIPT_URL){
     const importBatch = keys.map(key => {
@@ -1347,7 +1362,8 @@ function renderImportInfo(){
   const el = document.getElementById('lastImportInfo');
   if(!lastImportInfo){ el.textContent = 'Nenhuma importação feita ainda neste navegador.'; return; }
   const d = new Date(lastImportInfo.date);
-  el.innerHTML = `Última importação: <b>${lastImportInfo.filename}</b> em ${d.toLocaleString('pt-BR')} — ${lastImportInfo.updated} atualizados, ${lastImportInfo.novos} novos sem contato.`;
+  const periodoTxt = lastImportInfo.periodo ? ` (período: ${escapeHtml(lastImportInfo.periodo)})` : '';
+  el.innerHTML = `Última importação: <b>${lastImportInfo.filename}</b>${periodoTxt} em ${d.toLocaleString('pt-BR')} — ${lastImportInfo.updated} atualizados, ${lastImportInfo.novos} novos sem contato.`;
 }
 
 renderImportInfo();
