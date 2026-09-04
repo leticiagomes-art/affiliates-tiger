@@ -134,6 +134,22 @@
   .banner-import{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:12px 15px; margin-bottom:11px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
   .banner-import .info{flex:1; min-width:220px; font-size:11.8px; color:var(--muted);}
   .banner-import .info b{color:var(--ink);}
+
+  /* ---------- aba "Top parados" (cards) ---------- */
+  .cards-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(252px,1fr)); gap:14px; margin-top:4px;}
+  .top-card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px;}
+  .top-card-head{display:flex; align-items:flex-start; gap:10px;}
+  .top-card .avatar{width:38px; height:38px; border-radius:50%; flex:0 0 38px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:13px; letter-spacing:.02em;}
+  .top-card-name{flex:1; min-width:0;}
+  .top-card-name .row-name{display:block; font-size:12.8px; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .top-card-name .row-sub{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .top-card-contact{min-height:20px;}
+  .top-card-stats{display:grid; grid-template-columns:1fr 1fr; gap:8px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:9px 0;}
+  .top-card-stats div{display:flex; flex-direction:column; gap:2px;}
+  .top-stat-label{font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted);}
+  .top-card-stats b{font-size:12.8px; color:var(--ink);}
+  .top-card .actions{margin-top:-2px;}
+  .top-card .script-box{margin:0;}
   @media (max-width:900px){
     .sidebar{position:static; height:auto; width:100%;}
     .main{margin-left:0;}
@@ -191,6 +207,13 @@
 <div class="wrap">
 
   <h2 class="section-title"><span class="bar"></span>Todos os afiliados com contato conhecido (543, priorizando quem tem venda real confirmada)</h2>
+
+  <div class="period-tabs" id="mainViewTabs">
+    <button class="active" data-view="tabela">Tabela</button>
+    <button data-view="topparados">🔥 Top parados em faturamento</button>
+  </div>
+
+  <div id="viewTabela">
 
   <div class="banner-import">
     <div class="info">
@@ -274,6 +297,13 @@
   </table>
   </div>
   <div class="pager" id="pager"></div>
+
+  </div>
+
+  <div id="viewTopParados" style="display:none">
+    <div class="alert blue">Afiliados que já venderam de verdade (faturamento histórico ou volume confirmado) e agora estão em <b>Atenção, Crítico ou Sumido</b> — ordenados do maior pro menor faturamento. São os que mais valem uma ligação hoje. <span id="topParadosCount" style="font-weight:700;"></span></div>
+    <div class="cards-grid" id="topParadosGrid"></div>
+  </div>
 
   <div class="footer-note">Universo: contatos das suas próprias planilhas (Geral + abas por afiliado + Status Ativo Telegram), enriquecido com scrapes de grupo só p/ preencher lacuna, cruzado com Orders_2026.xlsx + PEDIDOS_2026-09-03.xlsx (venda real) · Tiger Offers</div>
 </div>
@@ -902,6 +932,96 @@ function applyFilters(){
   renderStats(currentList);
   updateNavCounts();
   document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.tier === tier));
+  renderTopParadosCards();
+}
+
+// ---------- Aba "Top parados em faturamento" ----------
+// Quem já vendeu de verdade (faturamento histórico ou volume confirmado) e agora tá em
+// atenção/crítico/sumido — ordenado do maior faturamento pro menor. "sem_venda_2026" fica de
+// fora de propósito: sem data de última venda não dá pra dizer que "parou", só que nunca vimos.
+function receitaHistorica_(e){
+  return (e.lifetime && e.lifetime.gross) || e.volume_total || 0;
+}
+function computeTopParados(){
+  return DATA
+    .filter(e => (e.tier==='atencao' || e.tier==='critico' || e.tier==='sumido') && receitaHistorica_(e) > 0)
+    .sort((a,b) => receitaHistorica_(b) - receitaHistorica_(a))
+    .slice(0, 60);
+}
+function initials_(nome){
+  const parts = (nome||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '?';
+  return (parts[0][0] + (parts.length>1 ? parts[parts.length-1][0] : '')).toUpperCase();
+}
+function avatarColor_(nome){
+  const palette = ['#1F3864','#2F5597','#F26B1D','#8A6D00','#5A1E17'];
+  let h = 0;
+  for(const c of (nome||'')) h = (h*31 + c.charCodeAt(0)) % palette.length;
+  return palette[h];
+}
+let topParadosList = [];
+function renderTopParadosCards(){
+  const grid = document.getElementById('topParadosGrid');
+  if(!grid) return; // ainda não montou o DOM (chamada durante o load inicial)
+  topParadosList = computeTopParados();
+  const countEl = document.getElementById('topParadosCount');
+  if(countEl) countEl.textContent = `(${topParadosList.length} afiliado${topParadosList.length===1?'':'s'})`;
+  if(!topParadosList.length){
+    grid.innerHTML = `<div class="no-contact" style="padding:20px 0;">Ninguém com faturamento histórico parou de rodar no momento — ótimo sinal.</div>`;
+    return;
+  }
+  grid.innerHTML = topParadosList.map((e, idx) => {
+    const produtos = produtosFallback_(e).slice(0,2).join(', ') || '—';
+    return `<div class="top-card">
+      <div class="top-card-head">
+        <div class="avatar" style="background:${avatarColor_(e.nome)}">${initials_(e.nome)}</div>
+        <div class="top-card-name">
+          <span class="row-name" data-topdetail="${idx}">${escapeHtml(e.nome)}</span>
+          <div class="row-sub">${escapeHtml(produtos)}</div>
+        </div>
+        <span class="badge b-${e.tier}">${e.dias_sem_vender}d</span>
+      </div>
+      <div class="top-card-contact">${contactCell(e)}</div>
+      <div class="top-card-stats">
+        <div><span class="top-stat-label">Faturamento histórico</span><b>${fmtMoney(receitaHistorica_(e))}</b></div>
+        <div><span class="top-stat-label">Última venda</span><b>${escapeHtml(fmtDate_(e.ultima_venda)) || '—'}</b></div>
+      </div>
+      <div class="actions">
+        <button data-topscript="${idx}">Script</button>
+        <button data-toplog="${idx}">Registrar</button>
+      </div>
+      <div class="script-box" id="topscript_${idx}_box" style="display:none;"></div>
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('[data-topdetail]').forEach(el => {
+    el.addEventListener('click', () => openDetailModal(topParadosList[parseInt(el.dataset.topdetail)]));
+  });
+  grid.querySelectorAll('[data-toplog]').forEach(btn => {
+    btn.addEventListener('click', () => openContactModal(topParadosList[parseInt(btn.dataset.toplog)]));
+  });
+  grid.querySelectorAll('[data-topscript]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.topscript);
+      const entry = topParadosList[idx];
+      const box = document.getElementById(`topscript_${idx}_box`);
+      const open = box.style.display !== 'none';
+      if(open){ box.style.display = 'none'; return; }
+      const {offer, text} = buildScript(entry);
+      box.innerHTML = `<b>Sugestão (oferta: ${offer.nome} — ${offer.linha}):</b><br>${escapeHtml(text)}
+        <div class="script-btns"><button class="copy-this">Copiar script</button><button class="regen">Gerar outra oferta</button></div>`;
+      box.querySelector('.copy-this').addEventListener('click', () => { copyText(text); showToast('Script copiado!'); });
+      box.querySelector('.regen').addEventListener('click', () => {
+        const others = OFFERS.filter(o => o.nome !== offer.nome);
+        const newOffer = others[Math.floor(Math.random()*others.length)];
+        const newText = scriptText_(entry, newOffer);
+        box.innerHTML = `<b>Sugestão (oferta: ${newOffer.nome} — ${newOffer.linha}):</b><br>${escapeHtml(newText)}
+          <div class="script-btns"><button class="copy-this2">Copiar script</button></div>`;
+        box.querySelector('.copy-this2').addEventListener('click', () => { copyText(newText); showToast('Script copiado!'); });
+      });
+      box.style.display = 'block';
+    });
+  });
 }
 
 function renderTable(){
@@ -1008,6 +1128,17 @@ function showToast(msg){
   const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
   setTimeout(()=> t.classList.remove('show'), 1800);
 }
+
+document.querySelectorAll('#mainViewTabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#mainViewTabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const view = btn.dataset.view;
+    document.getElementById('viewTabela').style.display = view==='tabela' ? '' : 'none';
+    document.getElementById('viewTopParados').style.display = view==='topparados' ? '' : 'none';
+    if(view === 'topparados') renderTopParadosCards();
+  });
+});
 
 document.getElementById('searchBox').addEventListener('input', applyFilters);
 document.getElementById('tierFilter').addEventListener('change', applyFilters);
