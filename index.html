@@ -81,7 +81,7 @@
   tbody tr:nth-child(even){background:#FAFBFC;}
   tbody tr:hover{background:#F0F3F9;}
   .badge{display:inline-block; padding:2.5px 7px; border-radius:4px; font-size:10px; font-weight:700;}
-  .b-recente{background:var(--green-bg); color:var(--green);}
+  .b-ativo{background:var(--green-bg); color:var(--green);}
   .b-atencao{background:var(--yellow-bg); color:var(--yellow);}
   .b-critico{background:var(--red-bg); color:var(--red);}
   .b-sumido{background:var(--dark-bg); color:var(--dark);}
@@ -156,24 +156,24 @@
       <span class="label">Todos os afiliados</span>
       <span class="count" id="countTodos">–</span>
     </div>
-    <div class="nav-item" data-tier="recente">
+    <div class="nav-item" data-tier="ativo">
       <span class="dot" style="background:#1E7B34"></span>
-      <span class="label">Ativo · 4–7 dias</span>
-      <span class="count" id="countRecente">–</span>
+      <span class="label">Ativo · 0–2 dias</span>
+      <span class="count" id="countAtivo">–</span>
     </div>
     <div class="nav-item" data-tier="atencao">
       <span class="dot" style="background:#8A6D00"></span>
-      <span class="label">Atenção · 8–15 dias</span>
+      <span class="label">Atenção · 3–7 dias</span>
       <span class="count" id="countAtencao">–</span>
     </div>
     <div class="nav-item" data-tier="critico">
       <span class="dot" style="background:#B3261E"></span>
-      <span class="label">Crítico · 16–30 dias</span>
+      <span class="label">Crítico · 8–15 dias</span>
       <span class="count" id="countCritico">–</span>
     </div>
     <div class="nav-item" data-tier="sumido">
       <span class="dot" style="background:#5A1E17"></span>
-      <span class="label">Sumido · 30+ dias</span>
+      <span class="label">Sumido · 16+ dias</span>
       <span class="count" id="countSumido">–</span>
     </div>
     <div class="nav-item" data-tier="sem_venda_2026">
@@ -204,6 +204,10 @@
       Importar base histórica (Master Affiliates)
       <input type="file" id="masterImportFile" accept=".xlsx,.xls,.csv">
     </span>
+    <span class="file-input-btn btn-ghost" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px;">
+      Atualizar contatos (planilha de Telegram)
+      <input type="file" id="contactsImportFile" accept=".xlsx,.xls,.csv">
+    </span>
     <button class="btn-orange" id="addAffiliateBtn">+ Inserir afiliado</button>
   </div>
 
@@ -211,10 +215,10 @@
     <input type="text" id="searchBox" placeholder="Buscar por nome ou produto...">
     <select id="tierFilter">
       <option value="">Todas as urgências</option>
-      <option value="recente">Recente (4-7d)</option>
-      <option value="atencao">Atenção (8-15d)</option>
-      <option value="critico">Crítico (16-30d)</option>
-      <option value="sumido">Sumido (30d+)</option>
+      <option value="ativo">Ativo (0-2d)</option>
+      <option value="atencao">Atenção (3-7d)</option>
+      <option value="critico">Crítico (8-15d)</option>
+      <option value="sumido">Sumido (16d+)</option>
       <option value="sem_venda_2026">Sem venda confirmada em 2026</option>
     </select>
     <select id="confFilter">
@@ -227,8 +231,20 @@
       <option value="com">Só com contato</option>
       <option value="sem">Só sem contato</option>
     </select>
+    <select id="ontemFilter">
+      <option value="">Ontem: todos</option>
+      <option value="sim">Vendeu ontem</option>
+      <option value="nao">Não vendeu ontem</option>
+    </select>
+    <select id="semanaFilter">
+      <option value="">Esta semana: todos</option>
+      <option value="sim">Vendeu esta semana</option>
+      <option value="nao">Não vendeu esta semana</option>
+    </select>
     <select id="sortFilter">
       <option value="">Ordem padrão</option>
+      <option value="dias_desc">Dias sem vender (mais dias primeiro)</option>
+      <option value="faturamento_desc">Faturamento do mês (maior primeiro)</option>
       <option value="streak_desc">Sequência diária (mais dias seguidos primeiro)</option>
     </select>
     <select id="monthFilter">
@@ -238,10 +254,10 @@
   </div>
 
   <div class="legend">
-    <span><span class="dot" style="background:#1E7B34"></span>4–7 dias</span>
-    <span><span class="dot" style="background:#8A6D00"></span>8–15 dias</span>
-    <span><span class="dot" style="background:#B3261E"></span>16–30 dias</span>
-    <span><span class="dot" style="background:#5A1E17"></span>30+ dias (sumido)</span>
+    <span><span class="dot" style="background:#1E7B34"></span>Ativo · 0–2 dias</span>
+    <span><span class="dot" style="background:#8A6D00"></span>Atenção · 3–7 dias</span>
+    <span><span class="dot" style="background:#B3261E"></span>Crítico · 8–15 dias</span>
+    <span><span class="dot" style="background:#5A1E17"></span>Sumido · 16+ dias</span>
     <span><span class="dot" style="background:#4A5468"></span>sem venda confirmada no Orders_2026</span>
     <span class="sep">·</span>
     <span>clique no nome do afiliado pra ver produtos, volume, tendência e histórico de vendas</span>
@@ -254,7 +270,7 @@
         <th style="width:18%">Afiliado</th>
         <th style="width:13%">Produto</th>
         <th style="width:13%" id="thFaturamento">Faturamento do mês</th>
-        <th style="width:10%">Parado há / status</th>
+        <th style="width:10%">Parado há</th>
         <th style="width:19%">Contato</th>
         <th style="width:17%">Ação</th>
       </tr>
@@ -341,6 +357,14 @@
     <div id="detailLifetime" style="font-size:12px; margin:0 0 10px;"></div>
 
     <div class="detail-grid">
+      <div>
+        <label>Telefone (WhatsApp)</label>
+        <input type="text" id="dTelefone" placeholder="Ex: (11) 99999-9999">
+      </div>
+      <div>
+        <label>Usuário Telegram</label>
+        <input type="text" id="dTelegram" placeholder="Ex: @usuario">
+      </div>
       <div>
         <label>Nome no dash da empresa</label>
         <input type="text" id="dNomeDash" placeholder="Ex: joao-silva">
@@ -457,11 +481,18 @@ async function apiPost(action, data){
   }
 }
 
+// Pares confirmados manualmente como sendo a mesma pessoa com nome escrito diferente
+// entre a base de contato e os relatórios da BuyGoods (não é fuzzy-match automático —
+// só entra aqui depois de confirmado, pra não arriscar juntar duas pessoas diferentes).
+const NAME_ALIASES = {
+  'fabio sobral torrezani': 'fabio torrezani'
+};
 function normName(s){
   if(!s) return '';
-  return s.toString().trim().toLowerCase()
+  const base = s.toString().trim().toLowerCase()
     .normalize('NFKD').replace(/[̀-ͯ]/g,'')
     .replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+  return NAME_ALIASES[base] || base;
 }
 function loadLS(key, fallback){
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -509,7 +540,8 @@ function serverMetaToLocal(obj){
   const out = {};
   Object.keys(obj).forEach(k => {
     const r = obj[k];
-    out[k] = {nome_dash: r.nome_dash || '', trafego: r.trafego || '', cpa: r.cpa || '', buygoods_user: r.buygoods_user || ''};
+    out[k] = {nome_dash: r.nome_dash || '', trafego: r.trafego || '', cpa: r.cpa || '', buygoods_user: r.buygoods_user || '',
+      telefone: r.telefone || '', telegram: r.telegram || ''};
   });
   return out;
 }
@@ -647,6 +679,15 @@ function buildData(){
     knownKeys.add(key);
   });
 
+  // recalcula dias-sem-vender/tier ao vivo (a partir de "hoje") pra todo mundo, inclusive quem só existe
+  // na base original — evita ficar com um tier "cravado" de quando a base foi gerada
+  merged.forEach(e => {
+    const r = recalcTierFromLastSale_(e.ultima_venda);
+    e.dias_sem_vender = r.dias;
+    e.tier = r.tier;
+    applyContactOverride_(e);
+  });
+
   return merged;
 }
 
@@ -654,15 +695,15 @@ function fmtMoney(v){ return v.toLocaleString('en-US', {style:'currency', curren
 function fmtDate_(s){ if(!s) return ''; const m = String(s).match(/^\d{4}-\d{2}-\d{2}/); return m ? m[0] : String(s); }
 function escapeHtml(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-const TIER_COLORS_ = {recente:'#1E7B34', atencao:'#8A6D00', critico:'#B3261E', sumido:'#5A1E17', sem_venda_2026:'#4A5468'};
+const TIER_COLORS_ = {ativo:'#1E7B34', atencao:'#8A6D00', critico:'#B3261E', sumido:'#5A1E17', sem_venda_2026:'#4A5468'};
 function tierColor_(tier){ return TIER_COLORS_[tier] || 'transparent'; }
 
 function updateNavCounts(){
-  const counts = {recente:0, atencao:0, critico:0, sumido:0, sem_venda_2026:0};
+  const counts = {ativo:0, atencao:0, critico:0, sumido:0, sem_venda_2026:0};
   DATA.forEach(e => { if(counts[e.tier]!==undefined) counts[e.tier]++; });
   const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
   set('countTodos', DATA.length);
-  set('countRecente', counts.recente);
+  set('countAtivo', counts.ativo);
   set('countAtencao', counts.atencao);
   set('countCritico', counts.critico);
   set('countSumido', counts.sumido);
@@ -724,17 +765,6 @@ function pctBadge_(e){
   if(pct===null) return '';
   const cls = pct > 5 ? 'trend-up' : (pct < -5 ? 'trend-down' : 'trend-flat');
   return `<br><span class="${cls}" style="font-size:10.5px; font-weight:700;">${pct>0?'+':''}${pct}%</span>`;
-}
-
-function statusLabel_(e){
-  if(e.tier === 'sumido') return {txt:'Sumido', cls:'b-sumido'};
-  if(e.tier === 'sem_venda_2026') return {txt:'Sem venda', cls:'b-sem_venda_2026'};
-  const pct = pct_(e);
-  if(pct !== null){
-    if(pct > 10) return {txt:'Crescendo', cls:'b-recente'};
-    if(pct < -10) return {txt:'Esfriando', cls:'b-atencao'};
-  }
-  return {txt:'Estável', cls:'b-recente'};
 }
 
 function monthKeysAvailable_(){
@@ -820,11 +850,24 @@ let selectedMonth = '';
 let DATA = buildData();
 let currentList = DATA.slice();
 
+function vendeuNoPeriodo_(e, dias, offsetDias){
+  const daily = (e.receita_diaria && Object.keys(e.receita_diaria).length) ? e.receita_diaria : (e.dados_diarios || {});
+  const hoje = new Date();
+  for(let i=offsetDias; i<offsetDias+dias; i++){
+    const d = new Date(hoje.getTime() - i*86400000);
+    const rec = daily[d.toISOString().slice(0,10)];
+    if(rec && ((rec.vendas||rec.orders||0) > 0)) return true;
+  }
+  return false;
+}
+
 function applyFilters(){
   const q = document.getElementById('searchBox').value.trim().toLowerCase();
   const tier = document.getElementById('tierFilter').value;
   const conf = document.getElementById('confFilter').value;
   const contact = document.getElementById('contactFilter').value;
+  const ontemF = document.getElementById('ontemFilter').value;
+  const semanaF = document.getElementById('semanaFilter').value;
   currentList = DATA.filter(e => {
     if(q){
       const hay = (e.nome+' '+(e.produtos||[]).join(' ')).toLowerCase();
@@ -835,11 +878,23 @@ function applyFilters(){
     if(conf === 'nao' && e.confirmado) return false;
     if(contact === 'com' && !(e.telefone || e.telegram)) return false;
     if(contact === 'sem' && (e.telefone || e.telegram)) return false;
+    if(ontemF === 'sim' && !vendeuNoPeriodo_(e,1,1)) return false;
+    if(ontemF === 'nao' && vendeuNoPeriodo_(e,1,1)) return false;
+    if(semanaF === 'sim' && !vendeuNoPeriodo_(e,7,0)) return false;
+    if(semanaF === 'nao' && vendeuNoPeriodo_(e,7,0)) return false;
     return true;
   });
   const sortBy = document.getElementById('sortFilter').value;
   if(sortBy === 'streak_desc'){
     currentList.sort((a,b) => (b.streak_diario||0) - (a.streak_diario||0));
+  } else if(sortBy === 'dias_desc'){
+    currentList.sort((a,b) => (b.dias_sem_vender ?? -1) - (a.dias_sem_vender ?? -1));
+  } else if(sortBy === 'faturamento_desc'){
+    currentList.sort((a,b) => {
+      const fa = selectedMonth ? monthlyRevenue_(a, selectedMonth) : null;
+      const fb = selectedMonth ? monthlyRevenue_(b, selectedMonth) : null;
+      return (fb ? fb.faturamento : -Infinity) - (fa ? fa.faturamento : -Infinity);
+    });
   }
   currentPage = 1;
   renderTable();
@@ -855,14 +910,21 @@ function renderTable(){
   tbody.innerHTML = pageItems.map((e, i) => {
     const idx = start+i;
     const rowId = 'row_'+idx;
-    const status = statusLabel_(e);
     const mrev = selectedMonth ? monthlyRevenue_(e, selectedMonth) : null;
+    let faturamentoCell;
+    if(mrev){
+      faturamentoCell = `<span class="vol">${mrev.aproximado?'≈ ':''}${fmtMoney(mrev.faturamento)}</span><br><span class="row-sub">${mrev.aproximado ? 'aprox. (sem relatório BuyGoods desse mês)' : mrev.vendas+' venda'+(mrev.vendas===1?'':'s')}</span>`;
+    } else {
+      const vendaMes = e.ultima_venda ? e.ultima_venda.slice(0,7) : null;
+      const foraDoMes = vendaMes && vendaMes !== selectedMonth;
+      faturamentoCell = `<span class="row-sub">sem dado no mês${foraDoMes ? ' (última venda em '+escapeHtml(fmtDate_(e.ultima_venda))+')' : ''}</span>`;
+    }
     return `
     <tr>
       <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name" data-detail="${idx}">${escapeHtml(e.nome)}</span><br><span class="row-sub">${e.ultima_venda ? 'última venda '+escapeHtml(fmtDate_(e.ultima_venda)) : 'sem venda registrada'}</span></td>
       <td class="row-sub">${escapeHtml(produtosFallback_(e).join(', ')) || '—'}</td>
-      <td>${mrev ? `<span class="vol">${mrev.aproximado?'≈ ':''}${fmtMoney(mrev.faturamento)}</span><br><span class="row-sub">${mrev.aproximado ? 'aprox. (sem relatório BuyGoods desse mês)' : mrev.vendas+' venda'+(mrev.vendas===1?'':'s')}</span>` : '<span class="row-sub">sem dado no mês</span>'}</td>
-      <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}<br><span class="badge ${status.cls}" style="margin-top:3px;">${status.txt}</span></td>
+      <td>${faturamentoCell}</td>
+      <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}</td>
       <td>${contactCell(e)}</td>
       <td class="actions">
         <button data-script="${rowId}">Script</button>
@@ -951,6 +1013,8 @@ document.getElementById('searchBox').addEventListener('input', applyFilters);
 document.getElementById('tierFilter').addEventListener('change', applyFilters);
 document.getElementById('confFilter').addEventListener('change', applyFilters);
 document.getElementById('contactFilter').addEventListener('change', applyFilters);
+document.getElementById('ontemFilter').addEventListener('change', applyFilters);
+document.getElementById('semanaFilter').addEventListener('change', applyFilters);
 document.getElementById('sortFilter').addEventListener('change', applyFilters);
 document.getElementById('monthFilter').addEventListener('change', () => {
   selectedMonth = document.getElementById('monthFilter').value;
@@ -1103,6 +1167,8 @@ function openDetailModal(entry){
 
   const key = normName(entry.nome);
   const meta = affiliateMeta[key] || {};
+  document.getElementById('dTelefone').value = entry.telefone || '';
+  document.getElementById('dTelegram').value = entry.telegram || '';
   document.getElementById('dNomeDash').value = meta.nome_dash || '';
   document.getElementById('dTrafego').value = meta.trafego || '';
   document.getElementById('dCpa').value = meta.cpa || '';
@@ -1126,6 +1192,8 @@ document.getElementById('dSaveMeta').addEventListener('click', async () => {
   if(!detailTarget) return;
   const key = normName(detailTarget.nome);
   const meta = {
+    telefone: document.getElementById('dTelefone').value.trim(),
+    telegram: document.getElementById('dTelegram').value.trim(),
     nome_dash: document.getElementById('dNomeDash').value.trim(),
     trafego: document.getElementById('dTrafego').value,
     cpa: document.getElementById('dCpa').value.trim(),
@@ -1133,7 +1201,8 @@ document.getElementById('dSaveMeta').addEventListener('click', async () => {
   };
   affiliateMeta[key] = meta;
   saveLS(LS_META, affiliateMeta);
-  renderTable();
+  DATA = buildData();
+  applyFilters();
   showToast(APPS_SCRIPT_URL ? 'Dados salvos — sincronizando...' : 'Dados salvos (neste navegador)');
   const res = await apiPost('saveAffiliateMeta', Object.assign({nome: detailTarget.nome}, meta));
   if(res && res.ok){ syncStatus='ok'; showToast('Sincronizado com Google Sheets ✓'); }
@@ -1258,6 +1327,93 @@ document.getElementById('masterImportFile').addEventListener('change', (ev) => {
   ev.target.value = '';
 });
 
+// ---------- Atualizar contatos (planilha de Telegram, múltiplas abas: Geral/TOP/300K/etc.) ----------
+document.getElementById('contactsImportFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
+      processContactsImport(wb, file.name);
+    } catch(err){
+      console.error(err);
+      alert('Não consegui ler esse arquivo. Confira se é a planilha de contatos/Telegram (uma aba por lista, com colunas Nome/Telefone/User).');
+    }
+  };
+  reader.readAsBinaryString(file);
+  ev.target.value = '';
+});
+
+function limparValorContato_(v){
+  if(v===null || v===undefined) return '';
+  const s = String(v).trim();
+  if(!s || s.toLowerCase()==='x') return '';
+  return s;
+}
+
+function processContactsImport(wb, filename){
+  const results = {}; // nome_norm -> {nome, telefone, telegram}
+
+  wb.SheetNames.forEach(sheetName => {
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+    if(!rows.length) return;
+    const header = rows[0].map(h => h ? String(h).trim().toLowerCase() : '');
+    const nomeIdx = header.indexOf('nome');
+    if(nomeIdx === -1) return; // aba sem coluna "nome" reconhecível (ex: "Novos Candidatos (Telegram)")
+    const telIdx = header.indexOf('telefone');
+    const tgIdx = header.findIndex(h => h.indexOf('user') !== -1 || h.indexOf('telegram') !== -1);
+
+    for(let i=1; i<rows.length; i++){
+      const row = rows[i];
+      if(!row) continue;
+      const nomeRaw = row[nomeIdx];
+      if(!nomeRaw) continue;
+      const nome = String(nomeRaw).trim();
+      const nkey = normName(nome);
+      if(!nkey || isExcludedName(nkey)) continue;
+
+      const telefone = telIdx!==-1 ? limparValorContato_(row[telIdx]) : '';
+      let telegram = tgIdx!==-1 ? limparValorContato_(row[tgIdx]) : '';
+      if(telegram.indexOf('t.me/') !== -1) telegram = '@' + telegram.split('t.me/')[1].replace(/\/+$/,'');
+      else if(telegram && !telegram.startsWith('@') && !telegram.startsWith('http')) telegram = '@'+telegram;
+
+      if(!telefone && !telegram) continue;
+      if(!results[nkey]) results[nkey] = {nome, telefone:'', telegram:''};
+      if(telefone) results[nkey].telefone = telefone;
+      if(telegram) results[nkey].telegram = telegram;
+    }
+  });
+
+  const keys = Object.keys(results);
+  if(keys.length === 0){ alert('Não encontrei nenhum contato novo (telefone/telegram) nesse arquivo.'); return; }
+  if(!confirm(`Encontrei ${keys.length} afiliados com telefone e/ou telegram nesse arquivo. Isso atualiza (ou preenche, se não tinha) o contato deles na ferramenta. Confirmar?`)) return;
+
+  keys.forEach(key => {
+    const r = results[key];
+    const cur = affiliateMeta[key] || {};
+    affiliateMeta[key] = {
+      nome_dash: cur.nome_dash || '', trafego: cur.trafego || '', cpa: cur.cpa || '', buygoods_user: cur.buygoods_user || '',
+      telefone: r.telefone || cur.telefone || '',
+      telegram: r.telegram || cur.telegram || ''
+    };
+  });
+  saveLS(LS_META, affiliateMeta);
+  DATA = buildData();
+  applyFilters();
+  showToast(`Contatos atualizados: ${keys.length} afiliados` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
+
+  if(APPS_SCRIPT_URL){
+    const batch = keys.map(key => Object.assign({nome_norm: key, nome: results[key].nome}, affiliateMeta[key]));
+    apiPost('importContactsBatch', batch).then(res => {
+      if(res && res.ok){ syncStatus='ok'; showToast(`Contatos sincronizados: ${res.processed} afiliados ✓`); }
+      else { syncStatus='erro'; showToast('Contatos salvos localmente, mas não sincronizaram com o Sheets ainda'); }
+      renderSyncBadge();
+    });
+  }
+}
+
 function processMasterAffiliatesImport(wb, filename){
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
@@ -1342,13 +1498,29 @@ function streakDiario_(daily, lastSale){
   return streak;
 }
 
+function applyContactOverride_(e){
+  const meta = affiliateMeta[normName(e.nome)];
+  if(!meta) return;
+  if(meta.telefone){
+    e.telefone = meta.telefone;
+    const digits = String(meta.telefone).replace(/\D/g,'');
+    e.tel_digits = digits ? (digits.length<=11 && !digits.startsWith('55') ? '55'+digits : digits) : null;
+    e.conf_telefone = 'alta';
+  }
+  if(meta.telegram){
+    e.telegram = meta.telegram;
+    e.tg_user = meta.telegram.replace('@','');
+    e.conf_telegram = 'alta';
+  }
+}
+
 function recalcTierFromLastSale_(ultimaVendaStr){
   if(!ultimaVendaStr) return {dias:null, tier:'sem_venda_2026'};
   const dias = Math.floor((new Date() - new Date(ultimaVendaStr))/86400000);
-  let tier = 'recente';
-  if(dias > 30) tier = 'sumido';
-  else if(dias > 15) tier = 'critico';
-  else if(dias > 7) tier = 'atencao';
+  let tier = 'ativo';
+  if(dias > 15) tier = 'sumido';
+  else if(dias > 7) tier = 'critico';
+  else if(dias > 2) tier = 'atencao';
   return {dias, tier};
 }
 
