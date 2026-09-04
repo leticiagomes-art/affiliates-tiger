@@ -18,12 +18,15 @@
  * - ContactLog: registro de "último contato" (oferta, resumo, data) por afiliado
  * - ImportUpdates: última leitura de cada import diário, por afiliado (upsert)
  * - AffiliateMeta: nome no dash da empresa, tipo de tráfego, CPA e usuário/e-mail BuyGoods, por afiliado
+ * - RevenueDaily: faturamento real por dia (relatório allProducts, aba "Detalhado por Funil"), 1 linha por
+ *   afiliado com um JSON acumulado dia a dia na coluna dados_json
  */
 
 const SHEET_ADDED = 'AddedAffiliates';
 const SHEET_CONTACT = 'ContactLog';
 const SHEET_IMPORT = 'ImportUpdates';
 const SHEET_META = 'AffiliateMeta';
+const SHEET_REVENUE = 'RevenueDaily';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -45,6 +48,10 @@ function setup() {
   if (!ss.getSheetByName(SHEET_META)) {
     const sh = ss.insertSheet(SHEET_META);
     sh.appendRow(['nome_norm', 'nome', 'nome_dash', 'trafego', 'cpa', 'buygoods_user', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_REVENUE)) {
+    const sh = ss.insertSheet(SHEET_REVENUE);
+    sh.appendRow(['nome_norm', 'nome', 'dados_json', 'atualizado_em']);
   }
   // remove a aba padrão "Sheet1"/"Página1" se estiver vazia
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Página1');
@@ -123,6 +130,7 @@ function doGet(e) {
       contacts: sheetToObjects_(SHEET_CONTACT),
       imports: sheetToObjects_(SHEET_IMPORT),
       meta: sheetToObjects_(SHEET_META),
+      revenue: sheetToObjects_(SHEET_REVENUE),
       ok: true
     };
   } else {
@@ -133,7 +141,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -181,6 +189,16 @@ function doPost(e) {
           confirmado: d.confirmado, total_pedidos: d.total_pedidos, volume_total: d.volume_total,
           produtos: (d.produtos || []).join(', '), streak_diario: d.streak_diario || 0,
           dados_diarios: d.dados_diarios || '{}', atualizado_em: now
+        });
+      });
+      result.processed = arr.length;
+    } else if (action === 'importRevenueBatch') {
+      // body.data = array de {nome, dados_json} (JSON acumulado dia a dia, já mesclado no cliente)
+      const arr = body.data || [];
+      arr.forEach(d => {
+        const key = normName_(d.nome);
+        upsertRow_(SHEET_REVENUE, 'nome_norm', key, {
+          nome_norm: key, nome: d.nome, dados_json: d.dados_json || '{}', atualizado_em: now
         });
       });
       result.processed = arr.length;

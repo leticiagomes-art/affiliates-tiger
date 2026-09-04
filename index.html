@@ -194,11 +194,15 @@
 
   <div class="banner-import">
     <div class="info">
-      <b>Atualização diária:</b> jogue aqui o export que vocês recebem por e-mail (PEDIDOS_AAAA-MM-DD.xlsx) pra atualizar última venda, volume e status sem precisar mexer no código. <span id="lastImportInfo"></span>
+      <b>Atualização diária:</b> jogue aqui o export que vocês recebem por e-mail (PEDIDOS_AAAA-MM-DD.xlsx) pra atualizar última venda, volume e status — e o relatório de faturamento (relatorio_afiliados_allProducts_...xlsx) pra atualizar faturamento por mês. Sem precisar mexer no código. <span id="lastImportInfo"></span>
     </div>
     <span class="file-input-btn btn-navy" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px; color:#fff;">
       Importar exportação do dia
       <input type="file" id="dailyImportFile" accept=".xlsx,.xls,.csv">
+    </span>
+    <span class="file-input-btn btn-navy" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px; color:#fff;">
+      Importar faturamento do dia
+      <input type="file" id="dailyRevenueFile" accept=".xlsx,.xls,.csv">
     </span>
     <button class="btn-orange" id="addAffiliateBtn">+ Inserir afiliado</button>
   </div>
@@ -227,6 +231,9 @@
       <option value="">Ordem padrão</option>
       <option value="streak_desc">Sequência diária (mais dias seguidos primeiro)</option>
     </select>
+    <select id="monthFilter">
+      <option value="">Faturamento: sem dados importados ainda</option>
+    </select>
     <button class="btn-ghost" id="copySheetsBtn">Copiar p/ Sheets</button>
   </div>
 
@@ -244,11 +251,12 @@
   <table>
     <thead>
       <tr>
-        <th style="width:22%">Afiliado</th>
-        <th style="width:10%">Parado há</th>
-        <th style="width:23%">Contato</th>
-        <th style="width:22%">Último contato</th>
-        <th style="width:23%">Ação</th>
+        <th style="width:18%">Afiliado</th>
+        <th style="width:13%">Produto</th>
+        <th style="width:13%" id="thFaturamento">Faturamento do mês</th>
+        <th style="width:10%">Parado há / status</th>
+        <th style="width:19%">Contato</th>
+        <th style="width:17%">Ação</th>
       </tr>
     </thead>
     <tbody id="tableBody"></tbody>
@@ -329,6 +337,7 @@
     <h3 id="detailName"></h3>
     <p class="sub" id="detailSub"></p>
     <div id="detailTrend" style="font-size:12.5px; margin:-6px 0 10px;"></div>
+    <div id="detailContactLog" style="font-size:12px; margin:0 0 10px;"></div>
 
     <div class="detail-grid">
       <div>
@@ -403,6 +412,8 @@ const LS_CONTACTS = 'tiger_contact_log_v1';
 const LS_IMPORT_INFO = 'tiger_last_import_v1';
 const LS_UPDATES = 'tiger_import_updates_v1'; // atualizações vindas de import diário, por nome normalizado
 const LS_META = 'tiger_affiliate_meta_v1'; // nome no dash, tipo de tráfego, CPA, usuário BuyGoods — por nome normalizado
+const LS_REVENUE = 'tiger_revenue_daily_v1'; // faturamento real por dia (do relatório allProducts), acumulado import a import
+const LS_REVENUE_NAMES = 'tiger_revenue_names_v1'; // nome de exibição de afiliados vistos só em import (nome_norm -> nome)
 
 // ---------- Sincronização com Google Sheets (Apps Script) ----------
 // Depois de implantar o Apps Script (ver /apps_script/Code.gs), cole a URL aqui.
@@ -462,6 +473,8 @@ let addedAffiliates = loadLS(LS_ADDED, []);
 let contactLog = loadLS(LS_CONTACTS, {});      // { nome_norm: {oferta, resumo, data} }
 let importUpdates = loadLS(LS_UPDATES, {});    // { nome_norm: {volume_ago, volume_set, ultima_venda, dias_sem_vender, tier, confirmado, produtos} }
 let affiliateMeta = loadLS(LS_META, {});       // { nome_norm: {nome_dash, trafego, cpa, buygoods_user} }
+let revenueDaily = loadLS(LS_REVENUE, {});     // { nome_norm: { 'YYYY-MM-DD': {vendas, faturamento, produtos} } }
+let revenueNames = loadLS(LS_REVENUE_NAMES, {}); // { nome_norm: 'Nome de exibição' } — pra afiliados só vistos em import
 let lastImportInfo = loadLS(LS_IMPORT_INFO, null);
 
 function serverAddedToLocal(obj){
@@ -498,6 +511,14 @@ function serverMetaToLocal(obj){
   return out;
 }
 
+function serverRevenueToLocal(obj){
+  const out = {};
+  Object.keys(obj).forEach(k => {
+    try { out[k] = JSON.parse(obj[k].dados_json || '{}'); } catch(e){ out[k] = {}; }
+  });
+  return out;
+}
+
 function serverImportsToLocal(obj){
   const out = {};
   Object.keys(obj).forEach(k => {
@@ -530,10 +551,14 @@ async function syncFromServer(){
   contactLog = serverContactsToLocal(j.contacts || {});
   importUpdates = serverImportsToLocal(j.imports || {});
   affiliateMeta = serverMetaToLocal(j.meta || {});
+  revenueDaily = serverRevenueToLocal(j.revenue || {});
+  Object.keys(j.revenue || {}).forEach(k => { if(j.revenue[k].nome) revenueNames[k] = j.revenue[k].nome; });
   saveLS(LS_ADDED, addedAffiliates);
   saveLS(LS_CONTACTS, contactLog);
   saveLS(LS_UPDATES, importUpdates);
   saveLS(LS_META, affiliateMeta);
+  saveLS(LS_REVENUE, revenueDaily);
+  saveLS(LS_REVENUE_NAMES, revenueNames);
   renderSyncBadge();
   return true;
 }
@@ -560,12 +585,46 @@ function buildData(){
   merged.forEach(e => {
     const key = normName(e.nome);
     if(importUpdates[key]) Object.assign(e, importUpdates[key]);
+    e.receita_diaria = revenueDaily[key] || {};
   });
   // acrescenta afiliados inseridos manualmente (se não colidir com nome já existente)
   addedAffiliates.forEach(a => {
     const key = normName(a.nome);
-    if(!merged.some(e => normName(e.nome) === key)) merged.push(Object.assign({}, a));
+    if(!merged.some(e => normName(e.nome) === key)) merged.push(Object.assign({receita_diaria: revenueDaily[key] || {}}, a));
   });
+
+  // afiliados que só aparecem em algum import (PEDIDOS ou faturamento) e ainda não têm contato conhecido
+  const knownKeys = new Set(merged.map(e => normName(e.nome)));
+  const importOnlyKeys = new Set(Object.keys(importUpdates).concat(Object.keys(revenueDaily)));
+  importOnlyKeys.forEach(key => {
+    if(knownKeys.has(key)) return;
+    const upd = importUpdates[key] || {};
+    merged.push({
+      nome: upd.nome || revenueNames[key] || key,
+      telefone: null, tel_digits: null, conf_telefone: null,
+      telegram: null, tg_user: null, conf_telegram: null,
+      status_planilha: 'sem contato na base — só aparece em import',
+      produto_planilha: null,
+      fontes_planilha: ['só em import'],
+      confirmado: upd.confirmado || false,
+      produtos: upd.produtos || [],
+      total_pedidos: upd.total_pedidos || 0,
+      volume_total: upd.volume_total || 0,
+      ultima_venda: upd.ultima_venda || null,
+      dias_sem_vender: upd.dias_sem_vender!==undefined ? upd.dias_sem_vender : null,
+      tier: upd.tier || 'sem_venda_2026',
+      volume_ago: upd.volume_ago!==undefined ? upd.volume_ago : null,
+      volume_set: upd.volume_set!==undefined ? upd.volume_set : null,
+      net_ago: upd.net_ago!==undefined ? upd.net_ago : null,
+      net_set: upd.net_set!==undefined ? upd.net_set : null,
+      tem_dado_custo: upd.tem_dado_custo || false,
+      streak_diario: upd.streak_diario || 0,
+      dados_diarios: upd.dados_diarios || {},
+      receita_diaria: revenueDaily[key] || {}
+    });
+    knownKeys.add(key);
+  });
+
   return merged;
 }
 
@@ -633,12 +692,67 @@ function contactCell(e){
   return `<div class="contact-links">${html}</div>`;
 }
 
-function pctBadge_(e){
+function pct_(e){
   const ago = e.volume_ago, set = e.volume_set;
-  if(!ago || set===null || set===undefined) return '';
-  const pct = Math.round(((set-ago)/ago)*100);
+  if(!ago || set===null || set===undefined) return null;
+  return Math.round(((set-ago)/ago)*100);
+}
+function pctBadge_(e){
+  const pct = pct_(e);
+  if(pct===null) return '';
   const cls = pct > 5 ? 'trend-up' : (pct < -5 ? 'trend-down' : 'trend-flat');
   return `<br><span class="${cls}" style="font-size:10.5px; font-weight:700;">${pct>0?'+':''}${pct}%</span>`;
+}
+
+function statusLabel_(e){
+  if(e.tier === 'sumido') return {txt:'Sumido', cls:'b-sumido'};
+  if(e.tier === 'sem_venda_2026') return {txt:'Sem venda', cls:'b-sem_venda_2026'};
+  const pct = pct_(e);
+  if(pct !== null){
+    if(pct > 10) return {txt:'Crescendo', cls:'b-recente'};
+    if(pct < -10) return {txt:'Esfriando', cls:'b-atencao'};
+  }
+  return {txt:'Estável', cls:'b-recente'};
+}
+
+function monthKeysAvailable_(){
+  const set = new Set();
+  Object.keys(revenueDaily).forEach(k => {
+    Object.keys(revenueDaily[k]).forEach(d => set.add(d.slice(0,7)));
+  });
+  return Array.from(set).sort().reverse();
+}
+
+function updateMonthOptions(){
+  const sel = document.getElementById('monthFilter');
+  const months = monthKeysAvailable_();
+  const monthNames = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  const prevVal = sel.value;
+  if(months.length === 0){
+    sel.innerHTML = '<option value="">Faturamento: sem dados importados ainda</option>';
+    return;
+  }
+  sel.innerHTML = months.map(mk => {
+    const [y,m] = mk.split('-');
+    return `<option value="${mk}">Faturamento: ${monthNames[parseInt(m)-1]} de ${y}</option>`;
+  }).join('');
+  sel.value = months.includes(prevVal) ? prevVal : months[0];
+}
+
+function produtosFallback_(e){
+  if(e.produtos && e.produtos.length) return e.produtos;
+  const dias = Object.keys(e.receita_diaria||{}).sort().reverse();
+  if(dias.length && e.receita_diaria[dias[0]].produtos) return e.receita_diaria[dias[0]].produtos;
+  return [];
+}
+
+function monthlyRevenue_(e, monthKey){
+  const daily = e.receita_diaria || {};
+  const diasDoMes = Object.keys(daily).filter(d => d.slice(0,7) === monthKey);
+  if(diasDoMes.length === 0) return null; // sem nenhum dia importado nesse mês pra esse afiliado
+  let vendas = 0, faturamento = 0;
+  diasDoMes.forEach(d => { vendas += daily[d].vendas||0; faturamento += daily[d].faturamento||0; });
+  return {vendas, faturamento: Math.round(faturamento*100)/100};
 }
 
 function trendCell(e){
@@ -669,6 +783,7 @@ function contactLogCell(e){
 
 const PAGE_SIZE = 40;
 let currentPage = 1;
+let selectedMonth = '';
 let DATA = buildData();
 let currentList = DATA.slice();
 
@@ -707,19 +822,22 @@ function renderTable(){
   tbody.innerHTML = pageItems.map((e, i) => {
     const idx = start+i;
     const rowId = 'row_'+idx;
+    const status = statusLabel_(e);
+    const mrev = selectedMonth ? monthlyRevenue_(e, selectedMonth) : null;
     return `
     <tr>
       <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name" data-detail="${idx}">${escapeHtml(e.nome)}</span><br><span class="row-sub">${e.ultima_venda ? 'última venda '+escapeHtml(fmtDate_(e.ultima_venda)) : 'sem venda registrada'}</span></td>
-      <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}</td>
+      <td class="row-sub">${escapeHtml(produtosFallback_(e).join(', ')) || '—'}</td>
+      <td>${mrev ? `<span class="vol">${fmtMoney(mrev.faturamento)}</span><br><span class="row-sub">${mrev.vendas} venda${mrev.vendas===1?'':'s'}</span>` : '<span class="row-sub">sem dado no mês</span>'}</td>
+      <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}<br><span class="badge ${status.cls}" style="margin-top:3px;">${status.txt}</span></td>
       <td>${contactCell(e)}</td>
-      <td>${contactLogCell(e)}</td>
       <td class="actions">
         <button data-script="${rowId}">Script</button>
         <button data-logbtn="${idx}">Registrar</button>
         ${(e.fontes_planilha||[]).includes('adicionado manualmente') ? `<button class="danger" data-delbtn="${idx}">Excluir</button>` : ''}
       </td>
     </tr>
-    <tr class="script-row" id="${rowId}"><td colspan="5"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
+    <tr class="script-row" id="${rowId}"><td colspan="6"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
   }).join('');
 
   tbody.querySelectorAll('button[data-script]').forEach(btn => {
@@ -801,6 +919,10 @@ document.getElementById('tierFilter').addEventListener('change', applyFilters);
 document.getElementById('confFilter').addEventListener('change', applyFilters);
 document.getElementById('contactFilter').addEventListener('change', applyFilters);
 document.getElementById('sortFilter').addEventListener('change', applyFilters);
+document.getElementById('monthFilter').addEventListener('change', () => {
+  selectedMonth = document.getElementById('monthFilter').value;
+  renderTable();
+});
 
 document.getElementById('copySheetsBtn').addEventListener('click', () => {
   const header = ['Nome','Confirmado (Orders_2026)','Produtos','Volume Historico','Volume Ago','Volume Set','Net Ago','Net Set','Ultima Venda','Dias Sem Vender','Tier','Telefone','Conf. Telefone','Telegram','Conf. Telegram','Status Planilha','Ultimo Contato Registrado'];
@@ -933,13 +1055,14 @@ function openDetailModal(entry){
   detailTarget = entry;
   detailPeriod = 'mes';
   document.getElementById('detailName').textContent = entry.nome;
-  const produtos = (entry.produtos||[]).join(', ') || (entry.produto_planilha || '—');
+  const produtos = produtosFallback_(entry).join(', ') || (entry.produto_planilha || '—');
   const statusVenda = entry.confirmado
     ? `confirmado · ${entry.total_pedidos||0}× · ${fmtMoney(entry.volume_total||0)} histórico`
     : 'sem venda confirmada em 2026';
   const streakTxt = (entry.streak_diario||0) >= 2 ? ` · ${entry.streak_diario} dias seguidos vendendo` : '';
   document.getElementById('detailSub').textContent = `${produtos} — ${statusVenda}${streakTxt}`;
   document.getElementById('detailTrend').innerHTML = trendCell(entry);
+  document.getElementById('detailContactLog').innerHTML = '<label>Último contato registrado</label>' + contactLogCell(entry);
 
   const key = normName(entry.nome);
   const meta = affiliateMeta[key] || {};
@@ -984,11 +1107,19 @@ document.getElementById('dSaveMeta').addEventListener('click', async () => {
 function renderDetailChart(entry, period){
   const box = document.getElementById('detailChartBox');
   const sub = document.getElementById('detailAnalysisSub');
-  const daily = entry.dados_diarios || {};
+  const receita = entry.receita_diaria || {};
+  const usingReceita = Object.keys(receita).length > 0;
+  // normaliza pro mesmo formato {orders, volume} independente da fonte (faturamento real tem prioridade)
+  const daily = {};
+  if(usingReceita){
+    Object.keys(receita).forEach(d => { daily[d] = {orders: receita[d].vendas||0, volume: receita[d].faturamento||0}; });
+  } else {
+    Object.assign(daily, entry.dados_diarios || {});
+  }
   const keys = Object.keys(daily);
   if(keys.length === 0){
     sub.textContent = '';
-    box.innerHTML = '<div class="chart-empty">Sem dados diários pra esse afiliado ainda — importe o arquivo de pedidos do dia pra ver o histórico aqui.</div>';
+    box.innerHTML = '<div class="chart-empty">Sem dados diários pra esse afiliado ainda — importe o arquivo de pedidos ou de faturamento do dia pra ver o histórico aqui.</div>';
     return;
   }
 
@@ -1071,6 +1202,88 @@ document.getElementById('dailyImportFile').addEventListener('change', (ev) => {
   reader.readAsBinaryString(file);
   ev.target.value = '';
 });
+
+// ---------- Importar faturamento do dia (relatorio_afiliados_allProducts_...xlsx) ----------
+document.getElementById('dailyRevenueFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
+      processRevenueImport(wb, file.name);
+    } catch(err){
+      console.error(err);
+      alert('Não consegui ler esse arquivo. Confira se é o relatório "allProducts" (aba "Detalhado por Funil") igual ao que vocês baixam do dash.');
+    }
+  };
+  reader.readAsBinaryString(file);
+  ev.target.value = '';
+});
+
+function processRevenueImport(wb, filename){
+  let sheetName = wb.SheetNames.find(n => n.indexOf('Funil') !== -1 && n.indexOf('Detalhado') !== -1);
+  if(!sheetName) sheetName = wb.SheetNames[1] || wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+  if(!rows.length){ alert('Arquivo vazio ou aba não encontrada.'); return; }
+
+  const header = rows[0];
+  const hidx = {};
+  header.forEach((h,i) => hidx[h] = i);
+  if(!('Afiliado' in hidx) || !('Faturamento' in hidx)){
+    alert('Não encontrei as colunas esperadas (Afiliado, Faturamento) — confira se é a aba "Detalhado por Funil" do relatório allProducts.');
+    return;
+  }
+
+  const m = filename.match(/(\d{4}-\d{2}-\d{2})_a_(\d{4}-\d{2}-\d{2})/);
+  const dayKey = m ? m[2] : new Date().toISOString().slice(0,10);
+
+  const byAff = {}; // nome_norm -> {nome, vendas, faturamento, produtos:Set}
+  for(let i=1; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+    const nome = row[hidx['Afiliado']];
+    if(!nome || String(nome).toUpperCase().indexOf('TOTAL') !== -1) continue;
+    const nkey = normName(nome);
+    if(!nkey || isExcludedName(nkey)) continue;
+    const vendas = Number(row[hidx['Vendas']]) || 0;
+    const faturamento = Number(row[hidx['Faturamento']]) || 0;
+    const produto = hidx['Produto']!==undefined ? row[hidx['Produto']] : null;
+    if(!byAff[nkey]) byAff[nkey] = {nome, vendas:0, faturamento:0, produtos:new Set()};
+    byAff[nkey].vendas += vendas;
+    byAff[nkey].faturamento += faturamento;
+    if(produto) byAff[nkey].produtos.add(produto);
+  }
+
+  const keys = Object.keys(byAff);
+  keys.forEach(key => {
+    const rec = byAff[key];
+    if(!revenueDaily[key]) revenueDaily[key] = {};
+    revenueDaily[key][dayKey] = {
+      vendas: rec.vendas,
+      faturamento: Math.round(rec.faturamento*100)/100,
+      produtos: Array.from(rec.produtos)
+    };
+    revenueNames[key] = rec.nome;
+  });
+  saveLS(LS_REVENUE, revenueDaily);
+  saveLS(LS_REVENUE_NAMES, revenueNames);
+  DATA = buildData();
+  updateMonthOptions();
+  selectedMonth = document.getElementById('monthFilter').value;
+  applyFilters();
+  showToast(`Faturamento de ${dayKey} importado: ${keys.length} afiliados` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
+
+  if(APPS_SCRIPT_URL){
+    const batch = keys.map(key => ({nome: byAff[key].nome, dados_json: JSON.stringify(revenueDaily[key])}));
+    apiPost('importRevenueBatch', batch).then(res => {
+      if(res && res.ok){ syncStatus='ok'; showToast(`Faturamento sincronizado: ${res.processed} afiliados ✓`); }
+      else { syncStatus='erro'; showToast('Faturamento salvo localmente, mas não sincronizou com o Sheets ainda'); }
+      renderSyncBadge();
+    });
+  }
+}
 
 function streakDiario_(daily, lastSale){
   if(!lastSale) return 0;
@@ -1220,6 +1433,8 @@ function renderImportInfo(){
 
 renderImportInfo();
 renderSyncBadge();
+updateMonthOptions();
+selectedMonth = document.getElementById('monthFilter').value;
 applyFilters();
 
 // tenta puxar do Google Sheets (se configurado) e re-renderiza quando chegar
@@ -1227,7 +1442,12 @@ applyFilters();
   if(!APPS_SCRIPT_URL) return;
   syncStatus = 'pendente'; renderSyncBadge();
   const ok = await syncFromServer();
-  if(ok){ DATA = buildData(); applyFilters(); }
+  if(ok){
+    DATA = buildData();
+    updateMonthOptions();
+    selectedMonth = document.getElementById('monthFilter').value;
+    applyFilters();
+  }
 })();
 </script>
 </body>
