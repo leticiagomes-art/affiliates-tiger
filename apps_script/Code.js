@@ -24,6 +24,10 @@
  *   afiliado com um JSON acumulado dia a dia na coluna dados_json
  * - LifetimeStats: totais vitalícios (desde o início da operação, sem data) do export "Master Affiliates"
  *   da BuyGoods — importação única, substitui a aba inteira a cada vez
+ * - VendasPorProdutoDia: total de vendas da operação inteira (todos os afiliados somados) por produto e
+ *   por dia — alimentada pelo mesmo import diário do BuyGoods (aba "Importar relatório BuyGoods"), 1 linha
+ *   por produto com um JSON acumulado dia a dia na coluna dados_json. Semana/mês são somados no navegador
+ *   a partir do dado diário, não ficam guardados prontos aqui.
  */
 
 const SHEET_ADDED = 'AddedAffiliates';
@@ -32,6 +36,7 @@ const SHEET_IMPORT = 'ImportUpdates';
 const SHEET_META = 'AffiliateMeta';
 const SHEET_REVENUE = 'RevenueDaily';
 const SHEET_LIFETIME = 'LifetimeStats';
+const SHEET_VENDAS_PRODUTO = 'VendasPorProdutoDia';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -61,6 +66,10 @@ function setup() {
   if (!ss.getSheetByName(SHEET_LIFETIME)) {
     const sh = ss.insertSheet(SHEET_LIFETIME);
     sh.appendRow(['nome_norm', 'nome', 'produtos', 'orders', 'gross', 'net', 'commissions', 'refunds', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_VENDAS_PRODUTO)) {
+    const sh = ss.insertSheet(SHEET_VENDAS_PRODUTO);
+    sh.appendRow(['produto', 'dados_json', 'atualizado_em']);
   }
   // remove a aba padrão "Sheet1"/"Página1" se estiver vazia
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Página1');
@@ -193,6 +202,10 @@ function mergeAffiliateKey_(fromKey, toKey) {
 }
 
 function sheetToObjects_(sheetName) {
+  return sheetToObjectsBy_(sheetName, 'nome_norm');
+}
+
+function sheetToObjectsBy_(sheetName, keyField) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sh || sh.getLastRow() < 2) return {};
   const values = sh.getDataRange().getValues();
@@ -202,8 +215,8 @@ function sheetToObjects_(sheetName) {
     const row = values[i];
     const obj = {};
     headers.forEach((h, idx) => obj[h] = row[idx]);
-    if (!obj.nome_norm) continue;
-    out[obj.nome_norm] = obj; // último ganha se houver duplicata
+    if (!obj[keyField]) continue;
+    out[obj[keyField]] = obj; // último ganha se houver duplicata
   }
   return out;
 }
@@ -305,6 +318,7 @@ function doGet(e) {
       meta: sheetToObjects_(SHEET_META),
       revenue: sheetToObjects_(SHEET_REVENUE),
       lifetime: sheetToObjects_(SHEET_LIFETIME),
+      vendasPorProduto: sheetToObjectsBy_(SHEET_VENDAS_PRODUTO, 'produto'),
       ok: true
     };
   } else {
@@ -315,7 +329,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -374,6 +388,18 @@ function doPost(e) {
         const key = normName_(d.nome);
         upsertRow_(SHEET_REVENUE, 'nome_norm', key, {
           nome_norm: key, nome: d.nome, dados_json: d.dados_json || '{}', atualizado_em: now
+        });
+      });
+      result.processed = arr.length;
+    } else if (action === 'importVendasProdutoBatch') {
+      // body.data = array de {produto, dados_json} (total de vendas da operação por dia, já mesclado
+      // no cliente com o que já existia) — mesmo padrão do importRevenueBatch, mas por produto em vez
+      // de por afiliado
+      const arr = body.data || [];
+      arr.forEach(d => {
+        if (!d.produto) return;
+        upsertRow_(SHEET_VENDAS_PRODUTO, 'produto', d.produto, {
+          produto: d.produto, dados_json: d.dados_json || '{}', atualizado_em: now
         });
       });
       result.processed = arr.length;

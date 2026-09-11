@@ -45,6 +45,7 @@
   *{box-sizing:border-box;}
   body{margin:0; font-family:var(--fb); background:var(--bg); color:var(--ink); font-size:13px; transition:background .15s ease, color .15s ease;}
   .num{font-family:var(--fm); font-variant-numeric:tabular-nums;}
+  th.r, td.r{text-align:right;}
   a{color:inherit;}
   .theme-toggle{display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; border-radius:5px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04); color:#C7D0E0; font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit;}
   .theme-toggle:hover{background:rgba(255,255,255,.09);}
@@ -185,6 +186,14 @@
   .top-card-stats b{font-family:var(--fm); font-size:14px; color:var(--ink); font-variant-numeric:tabular-nums;}
   .top-card .actions{margin-top:-2px;}
   .top-card .script-box{margin:0;}
+
+  /* ---------- aba "Vendas por dia" ---------- */
+  .kpi-row{display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:14px; margin-bottom:16px;}
+  .mini-kpi{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; position:relative;}
+  .mini-kpi::before{content:""; position:absolute; left:0; top:14px; bottom:14px; width:3px; border-radius:3px; background:var(--orange);}
+  .mini-kpi .lab{font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700;}
+  .mini-kpi .val{font-family:var(--fm); font-size:26px; font-weight:600; color:var(--ink); margin:5px 0 2px; font-variant-numeric:tabular-nums;}
+  .mini-kpi .note{font-size:11px; color:var(--muted);}
   @media (max-width:900px){
     .sidebar{position:static; height:auto; width:100%;}
     .main{margin-left:0;}
@@ -244,6 +253,13 @@
       <span class="count" id="countSemVenda">–</span>
     </div>
   </div>
+  <div class="nav-section">
+    <div class="nav-heading">Outras visões</div>
+    <div class="nav-item" id="navVendasDia">
+      <span class="dot" style="background:#2F5597"></span>
+      <span class="label">📈 Vendas por dia</span>
+    </div>
+  </div>
   <div id="headerStats"></div>
   <div class="sidebar-sync">
     <button class="theme-toggle" id="themeToggle" type="button">
@@ -255,6 +271,8 @@
 </aside>
 <main class="main">
 <div class="wrap">
+
+<div id="afiliadosSection">
 
   <div class="period-tabs" id="mainViewTabs">
     <button class="active" data-view="tabela">Geral</button>
@@ -346,7 +364,26 @@
   </div>
 
   <div class="footer-note">Universo: contatos das suas próprias planilhas (Geral + abas por afiliado + Status Ativo Telegram), enriquecido com scrapes de grupo só p/ preencher lacuna, cruzado com Orders_2026.xlsx + PEDIDOS_2026-09-03.xlsx (venda real) · Tiger Offers</div>
+
 </div>
+
+<div id="viewVendasDia" style="display:none">
+  <h2 class="section-title"><span class="bar"></span>Vendas por dia</h2>
+  <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> (botão "Importar relatório BuyGoods") — não precisa importar de novo aqui, os dois usam o mesmo arquivo. Esta visão soma as vendas de <b>todos os afiliados</b> por produto, dia a dia. <span id="vendasDiaInfo"></span></div>
+  <div class="kpi-row" id="vendasDiaKpis"></div>
+  <div class="period-tabs" id="vendasDiaTabs">
+    <button class="active" data-periodo="dia">Por dia (últimos 14)</button>
+    <button data-periodo="semana">Por semana</button>
+    <button data-periodo="mes">Por mês</button>
+  </div>
+  <div class="table-scroll">
+  <table id="vendasDiaTableEl">
+    <thead><tr id="vendasDiaHead"></tr></thead>
+    <tbody id="vendasDiaBody"></tbody>
+  </table>
+  </div>
+</div>
+
 </main>
 </div>
 
@@ -502,6 +539,7 @@ const LS_META = 'tiger_affiliate_meta_v1'; // nome no dash, tipo de tráfego, CP
 const LS_REVENUE = 'tiger_revenue_daily_v1'; // faturamento real por dia (do relatório allProducts), acumulado import a import
 const LS_REVENUE_NAMES = 'tiger_revenue_names_v1'; // nome de exibição de afiliados vistos só em import (nome_norm -> nome)
 const LS_LIFETIME = 'tiger_lifetime_stats_v1'; // totais vitalícios (desde o início da operação) do Master Affiliates, sem granularidade de data
+const LS_VENDAS_PRODUTO = 'tiger_vendas_produto_dia_v1'; // total de vendas da operação inteira, por produto e por dia (soma de todos os afiliados)
 
 // ---------- Sincronização com Google Sheets (Apps Script) ----------
 // Depois de implantar o Apps Script (ver /apps_script/Code.gs), cole a URL aqui.
@@ -571,6 +609,7 @@ let affiliateMeta = loadLS(LS_META, {});       // { nome_norm: {nome_dash, trafe
 let revenueDaily = loadLS(LS_REVENUE, {});     // { nome_norm: { 'YYYY-MM-DD': {vendas, faturamento, produtos} } }
 let revenueNames = loadLS(LS_REVENUE_NAMES, {}); // { nome_norm: 'Nome de exibição' } — pra afiliados só vistos em import
 let lifetimeStats = loadLS(LS_LIFETIME, {});   // { nome_norm: {nome, produtos, orders, gross, net, commissions, refunds} } — totais desde o início, sem data
+let vendasPorProdutoDia = loadLS(LS_VENDAS_PRODUTO, {}); // { produto: { 'YYYY-MM-DD': vendas } } — soma de todos os afiliados
 let lastImportInfo = loadLS(LS_IMPORT_INFO, null);
 
 function serverAddedToLocal(obj){
@@ -609,6 +648,14 @@ function serverMetaToLocal(obj){
 }
 
 function serverRevenueToLocal(obj){
+  const out = {};
+  Object.keys(obj).forEach(k => {
+    try { out[k] = JSON.parse(obj[k].dados_json || '{}'); } catch(e){ out[k] = {}; }
+  });
+  return out;
+}
+
+function serverVendasProdutoToLocal(obj){
   const out = {};
   Object.keys(obj).forEach(k => {
     try { out[k] = JSON.parse(obj[k].dados_json || '{}'); } catch(e){ out[k] = {}; }
@@ -665,6 +712,7 @@ async function syncFromServer(){
   revenueDaily = serverRevenueToLocal(j.revenue || {});
   Object.keys(j.revenue || {}).forEach(k => { if(j.revenue[k].nome) revenueNames[k] = j.revenue[k].nome; });
   lifetimeStats = serverLifetimeToLocal(j.lifetime || {});
+  vendasPorProdutoDia = serverVendasProdutoToLocal(j.vendasPorProduto || {});
   saveLS(LS_ADDED, addedAffiliates);
   saveLS(LS_CONTACTS, contactLog);
   saveLS(LS_UPDATES, importUpdates);
@@ -672,6 +720,7 @@ async function syncFromServer(){
   saveLS(LS_REVENUE, revenueDaily);
   saveLS(LS_REVENUE_NAMES, revenueNames);
   saveLS(LS_LIFETIME, lifetimeStats);
+  saveLS(LS_VENDAS_PRODUTO, vendasPorProdutoDia);
   renderSyncBadge();
   return true;
 }
@@ -973,6 +1022,7 @@ function applyFilters(){
   updateNavCounts();
   document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.tier === tier));
   renderTopParadosCards();
+  renderVendasDia();
 }
 
 // ---------- Aba "Top parados em faturamento" ----------
@@ -1688,6 +1738,7 @@ function recalcTierFromLastSale_(ultimaVendaStr){
 // relatório diário (1 dia) quanto pra uma exportação com meses/ano inteiro de uma vez.
 function processBuyGoodsImport(wb, filename){
   const byAff = {}; // nome_norm -> {nome, produtos:Set, daily:{dayKey:{vendas,faturamento}}}
+  const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS os afiliados (inclusive internos), pra bater com o total real da operação
   let sheetsLidas = 0;
   let diasEncontrados = new Set();
 
@@ -1706,8 +1757,6 @@ function processBuyGoodsImport(wb, filename){
       if(!row) continue;
       const nome = row[hidx['Affiliate Name']];
       if(!nome) continue;
-      const nkey = normName(nome);
-      if(!nkey || isExcludedName(nkey)) continue;
 
       const canceledRaw = row[hidx['Was Canceled']];
       if(canceledRaw == 1 || canceledRaw === '1' || canceledRaw === true) continue;
@@ -1720,6 +1769,15 @@ function processBuyGoodsImport(wb, filename){
       diasEncontrados.add(dayKey);
 
       const actionType = row[hidx['Action Type']];
+
+      if(actionType === 'neworder'){
+        if(!porProdutoDia[produto]) porProdutoDia[produto] = {};
+        porProdutoDia[produto][dayKey] = (porProdutoDia[produto][dayKey] || 0) + 1;
+      }
+
+      const nkey = normName(nome);
+      if(!nkey || isExcludedName(nkey)) continue;
+
       if(!byAff[nkey]) byAff[nkey] = {nome, produtos:new Set(), daily:{}};
       const rec = byAff[nkey];
       if(!rec.daily[dayKey]) rec.daily[dayKey] = {vendas:0, faturamento:0};
@@ -1794,6 +1852,18 @@ function processBuyGoodsImport(wb, filename){
   saveLS(LS_UPDATES, importUpdates);
   saveLS(LS_REVENUE, revenueDaily);
   saveLS(LS_REVENUE_NAMES, revenueNames);
+
+  // soma no total de vendas por produto por dia (Vendas por dia) — inclui contas internas de propósito,
+  // é o total real da operação, não o ranking de afiliados
+  const produtosTocados = Object.keys(porProdutoDia);
+  produtosTocados.forEach(produto => {
+    if(!vendasPorProdutoDia[produto]) vendasPorProdutoDia[produto] = {};
+    Object.keys(porProdutoDia[produto]).forEach(dayKey => {
+      vendasPorProdutoDia[produto][dayKey] = porProdutoDia[produto][dayKey];
+    });
+  });
+  saveLS(LS_VENDAS_PRODUTO, vendasPorProdutoDia);
+
   const diasOrdenados = Array.from(diasEncontrados).sort();
   const periodoTxt = diasOrdenados.length > 1 ? `${diasOrdenados[0]} a ${diasOrdenados[diasOrdenados.length-1]}` : (diasOrdenados[0] || '—');
   lastImportInfo = {filename, date: new Date().toISOString(), updated: updatedCount, novos: newCount, periodo: periodoTxt};
@@ -1804,6 +1874,7 @@ function processBuyGoodsImport(wb, filename){
   selectedMonth = document.getElementById('monthFilter').value;
   applyFilters();
   renderImportInfo();
+  renderVendasDia();
   showToast(`Importado (${periodoTxt}): ${updatedCount} atualizados, ${newCount} novos sem contato` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
 
   if(APPS_SCRIPT_URL){
@@ -1813,8 +1884,9 @@ function processBuyGoodsImport(wb, filename){
       return rec;
     });
     const revenueBatch = keys.map(key => ({nome: byAff[key].nome, dados_json: JSON.stringify(revenueDaily[key])}));
-    Promise.all([apiPost('importBatch', importBatch), apiPost('importRevenueBatch', revenueBatch)]).then(([r1, r2]) => {
-      if(r1 && r1.ok && r2 && r2.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
+    const vendasProdutoBatch = produtosTocados.map(produto => ({produto, dados_json: JSON.stringify(vendasPorProdutoDia[produto])}));
+    Promise.all([apiPost('importBatch', importBatch), apiPost('importRevenueBatch', revenueBatch), apiPost('importVendasProdutoBatch', vendasProdutoBatch)]).then(([r1, r2, r3]) => {
+      if(r1 && r1.ok && r2 && r2.ok && r3 && r3.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
       else { syncStatus='erro'; showToast('Import salvo localmente, mas não sincronizou com o Sheets ainda'); }
       renderSyncBadge();
     });
@@ -1828,6 +1900,138 @@ function renderImportInfo(){
   const periodoTxt = lastImportInfo.periodo ? ` (período: ${escapeHtml(lastImportInfo.periodo)})` : '';
   el.innerHTML = `Última importação: <b>${lastImportInfo.filename}</b>${periodoTxt} em ${d.toLocaleString('pt-BR')} — ${lastImportInfo.updated} atualizados, ${lastImportInfo.novos} novos sem contato.`;
 }
+
+// ---------- Aba "Vendas por dia" ----------
+// Total de vendas da operação inteira (todos os produtos, todos os afiliados incl. internos) por dia —
+// semana e mês são somados aqui no navegador a partir do dado diário, nunca ficam "presos" numa coluna fixa.
+function diaLbl_(dayKey){
+  const [, m, d] = dayKey.split('-');
+  return `${d}/${m}`;
+}
+function isoWeekMonday_(dayKey){
+  const d = new Date(dayKey+'T00:00:00');
+  const dow = (d.getDay()+6)%7; // 0 = segunda
+  d.setDate(d.getDate()-dow);
+  return d.toISOString().slice(0,10);
+}
+function mesLblCurto_(monthKey){
+  const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const [y,m] = monthKey.split('-');
+  return nomes[parseInt(m,10)-1] + '/' + y.slice(2);
+}
+function vendasDiaAllDays_(){
+  const dias = new Set();
+  Object.values(vendasPorProdutoDia).forEach(porDia => Object.keys(porDia).forEach(d => dias.add(d)));
+  return Array.from(dias).sort();
+}
+function vendasDiaProdutos_(){
+  return Object.keys(vendasPorProdutoDia).sort((a,b) => {
+    const totalA = Object.values(vendasPorProdutoDia[a]).reduce((s,v)=>s+(v||0),0);
+    const totalB = Object.values(vendasPorProdutoDia[b]).reduce((s,v)=>s+(v||0),0);
+    return totalB - totalA;
+  });
+}
+function renderVendasDiaKPIs_(){
+  const el = document.getElementById('vendasDiaKpis');
+  if(!el) return;
+  const hojeKey = new Date().toISOString().slice(0,10);
+  const ontemKey = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const mesAtual = hojeKey.slice(0,7);
+  const semanaAtualMonday = isoWeekMonday_(hojeKey);
+
+  let totalOntem = 0, totalSemana = 0, totalMes = 0, ultimoDiaComDado = null;
+  Object.values(vendasPorProdutoDia).forEach(porDia => {
+    Object.keys(porDia).forEach(dayKey => {
+      const v = porDia[dayKey] || 0;
+      if(dayKey === ontemKey) totalOntem += v;
+      if(isoWeekMonday_(dayKey) === semanaAtualMonday) totalSemana += v;
+      if(dayKey.slice(0,7) === mesAtual) totalMes += v;
+      if(!ultimoDiaComDado || dayKey > ultimoDiaComDado) ultimoDiaComDado = dayKey;
+    });
+  });
+  const semDadoOntem = totalOntem === 0 && ultimoDiaComDado && ultimoDiaComDado < ontemKey;
+
+  el.innerHTML = `
+    <div class="mini-kpi">
+      <div class="lab">Ontem (${diaLbl_(ontemKey)})</div>
+      <div class="val">${totalOntem}</div>
+      <div class="note">${semDadoOntem ? 'sem import ainda — último dado: '+diaLbl_(ultimoDiaComDado) : 'vendas (order items)'}</div>
+    </div>
+    <div class="mini-kpi">
+      <div class="lab">Esta semana</div>
+      <div class="val">${totalSemana}</div>
+      <div class="note">desde ${diaLbl_(semanaAtualMonday)}</div>
+    </div>
+    <div class="mini-kpi">
+      <div class="lab">Este mês</div>
+      <div class="val">${totalMes}</div>
+      <div class="note">${mesLblCurto_(mesAtual)}</div>
+    </div>`;
+}
+let vendasDiaPeriodo = 'dia';
+function renderVendasDiaTable_(){
+  const head = document.getElementById('vendasDiaHead');
+  const body = document.getElementById('vendasDiaBody');
+  if(!head || !body) return;
+  const produtos = vendasDiaProdutos_();
+  if(!produtos.length){
+    head.innerHTML = '<th>Produto</th>';
+    body.innerHTML = '<tr><td class="row-sub">Sem dado ainda — importe o relatório BuyGoods na aba Geral.</td></tr>';
+    return;
+  }
+  const allDays = vendasDiaAllDays_();
+  let colKeys, colLabels, getVal;
+  if(vendasDiaPeriodo === 'semana'){
+    colKeys = Array.from(new Set(allDays.map(isoWeekMonday_))).sort();
+    colLabels = colKeys.map(w => 'Sem '+diaLbl_(w));
+    getVal = (produto,col) => Object.keys(vendasPorProdutoDia[produto]).reduce((s,d) => s + (isoWeekMonday_(d)===col ? (vendasPorProdutoDia[produto][d]||0) : 0), 0);
+  } else if(vendasDiaPeriodo === 'mes'){
+    colKeys = Array.from(new Set(allDays.map(d=>d.slice(0,7)))).sort();
+    colLabels = colKeys.map(mesLblCurto_);
+    getVal = (produto,col) => Object.keys(vendasPorProdutoDia[produto]).reduce((s,d) => s + (d.slice(0,7)===col ? (vendasPorProdutoDia[produto][d]||0) : 0), 0);
+  } else {
+    colKeys = allDays.slice(-14);
+    colLabels = colKeys.map(diaLbl_);
+    getVal = (produto,col) => vendasPorProdutoDia[produto][col] || 0;
+  }
+  const totalDoProduto = produto => Object.values(vendasPorProdutoDia[produto]).reduce((s,v)=>s+(v||0),0);
+
+  head.innerHTML = `<th style="width:16%">Produto</th>` + colLabels.map(l=>`<th class="r num">${escapeHtml(l)}</th>`).join('') + `<th class="r num">Total</th>`;
+  body.innerHTML = produtos.map(produto => {
+    const cells = colKeys.map(c => {
+      const v = getVal(produto,c);
+      return `<td class="r num">${v ? v : '<span style="color:var(--line)">·</span>'}</td>`;
+    }).join('');
+    return `<tr><td class="row-name">${escapeHtml(produto)}</td>${cells}<td class="r num" style="font-weight:700">${totalDoProduto(produto)}</td></tr>`;
+  }).join('') +
+    `<tr style="background:var(--row-even); font-weight:700"><td>TOTAL</td>` +
+    colKeys.map(c => `<td class="r num">${produtos.reduce((s,p)=>s+getVal(p,c),0)}</td>`).join('') +
+    `<td class="r num">${produtos.reduce((s,p)=>s+totalDoProduto(p),0)}</td></tr>`;
+}
+function renderVendasDia(){
+  renderVendasDiaKPIs_();
+  renderVendasDiaTable_();
+  const info = document.getElementById('vendasDiaInfo');
+  if(info){
+    const dias = vendasDiaAllDays_();
+    info.textContent = dias.length ? `Dados de ${diaLbl_(dias[0])} a ${diaLbl_(dias[dias.length-1])}.` : 'Ainda sem dado importado.';
+  }
+}
+document.querySelectorAll('#vendasDiaTabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#vendasDiaTabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    vendasDiaPeriodo = btn.dataset.periodo;
+    renderVendasDiaTable_();
+  });
+});
+document.getElementById('navVendasDia').addEventListener('click', () => {
+  const showingVendas = document.getElementById('viewVendasDia').style.display !== 'none';
+  document.getElementById('afiliadosSection').style.display = showingVendas ? '' : 'none';
+  document.getElementById('viewVendasDia').style.display = showingVendas ? 'none' : '';
+  document.getElementById('navVendasDia').classList.toggle('active', !showingVendas);
+  if(!showingVendas) renderVendasDia();
+});
 
 renderImportInfo();
 renderSyncBadge();
