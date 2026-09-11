@@ -329,7 +329,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -441,6 +441,21 @@ function doPost(e) {
       if (life.length) bulkMergeSheet_(SHEET_LIFETIME, 'nome_norm', life);
       result.processedImports = imp.length;
       result.processedLifetime = life.length;
+    } else if (action === 'addAffiliatesBatch') {
+      // body.data = array de {nome, telefone, telegram, produto_planilha, observacao, novo} — mesma
+      // planilha do AddedAffiliates do addAffiliate, só que em lote (ex: importar uma lista de
+      // contatos novos de uma vez, marcados com novo:true pra aparecerem na aba "Novos")
+      const arr = body.data || [];
+      const updates = arr.filter(d => d && d.nome).map(d => {
+        const key = normName_(d.nome);
+        return {
+          nome_norm: key, nome: d.nome, telefone: d.telefone || '', telegram: d.telegram || '',
+          produto_planilha: d.produto_planilha || '', observacao: d.observacao || '',
+          novo: d.novo === true, criado_em: now
+        };
+      });
+      bulkMergeSheet_(SHEET_ADDED, 'nome_norm', updates);
+      result.processed = updates.length;
     } else {
       result = { ok: false, error: 'ação desconhecida: ' + action };
     }

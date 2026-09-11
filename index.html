@@ -22,6 +22,7 @@
     --alert-bg:var(--yellow-bg); --alert-border:#F0DE9E; --alert-fg:#6b5600;
     --alert-blue-bg:#E7F0FE; --alert-blue-border:#BBD6F7; --alert-blue-fg:#173A66;
     --semvenda-bg:#EAECF2; --semvenda-fg:#4A5468; --toast-bg:#181B22; --toast-fg:#fff;
+    --novo:#0891B2; --novo-bg:#E1F4F7;
   }
   /* Paleta escura — estrutura em camadas (bg de página != superfície de cartão/tabela != borda),
      baseada no app do Penpot (github.com/penpot/penpot): #18181A de fundo, #212426 de superfície,
@@ -41,6 +42,7 @@
     --alert-bg:rgba(227,181,5,.14); --alert-border:rgba(240,222,158,.35); --alert-fg:#FFD666;
     --alert-blue-bg:rgba(47,85,151,.18); --alert-blue-border:rgba(187,214,247,.3); --alert-blue-fg:#BFE0FF;
     --semvenda-bg:rgba(255,255,255,.08); --semvenda-fg:#B7C0CE; --toast-bg:#F0F0F2; --toast-fg:#181B22;
+    --novo:#4DD4E8; --novo-bg:rgba(8,145,178,.22);
   }
   *{box-sizing:border-box;}
   body{margin:0; font-family:var(--fb); background:var(--bg); color:var(--ink); font-size:13px; transition:background .15s ease, color .15s ease;}
@@ -117,6 +119,7 @@
   tbody tr:nth-child(even){background:var(--row-even);}
   tbody tr:hover{background:var(--row-hover);}
   .badge{display:inline-block; padding:2.5px 7px; border-radius:4px; font-family:var(--fm); font-size:11.5px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .b-novo{background:var(--novo-bg); color:var(--novo);}
   .b-ativo{background:var(--green-bg); color:var(--green);}
   .b-atencao{background:var(--yellow-bg); color:var(--yellow);}
   .b-critico{background:var(--red-bg); color:var(--red);}
@@ -227,6 +230,11 @@
       <span class="label">Todos os afiliados</span>
       <span class="count" id="countTodos">–</span>
     </div>
+    <div class="nav-item" data-tier="novo">
+      <span class="dot" style="background:#0891B2"></span>
+      <span class="label">Novos</span>
+      <span class="count" id="countNovo">–</span>
+    </div>
     <div class="nav-item" data-tier="ativo">
       <span class="dot" style="background:#1E7B34"></span>
       <span class="label">Ativo · 0–2 dias</span>
@@ -296,6 +304,7 @@
     <input type="text" id="searchBox" placeholder="Buscar por nome ou produto...">
     <select id="tierFilter">
       <option value="">Todas as urgências</option>
+      <option value="novo">Novos</option>
       <option value="ativo">Ativo (0-2d)</option>
       <option value="atencao">Atenção (3-7d)</option>
       <option value="critico">Crítico (8-15d)</option>
@@ -330,6 +339,7 @@
   </div>
 
   <div class="legend">
+    <span><span class="dot" style="background:#0891B2"></span>Novos · ainda sem venda registrada</span>
     <span><span class="dot" style="background:#1E7B34"></span>Ativo · 0–2 dias</span>
     <span><span class="dot" style="background:#8A6D00"></span>Atenção · 3–7 dias</span>
     <span><span class="dot" style="background:#B3261E"></span>Crítico · 8–15 dias</span>
@@ -624,6 +634,7 @@ function serverAddedToLocal(obj){
     status_planilha: r.observacao || 'adicionado manualmente na ferramenta',
     produto_planilha: r.produto_planilha || null,
     fontes_planilha: ['adicionado manualmente'],
+    novo: r.novo === true || r.novo === 'true',
     confirmado: false, produtos: [], total_pedidos: 0, volume_total: 0,
     ultima_venda: null, dias_sem_vender: null, tier: 'sem_venda_2026',
     volume_ago: null, volume_set: null, net_ago: null, net_set: null, tem_dado_custo: false,
@@ -797,7 +808,9 @@ function buildData(){
   merged.forEach(e => {
     const r = recalcTierFromLastSale_(e.ultima_venda);
     e.dias_sem_vender = r.dias;
-    e.tier = r.tier;
+    // "novo" é um selo manual (afiliado recém-cadastrado, ainda sem venda) — assim que ele vender de
+    // verdade, ultima_venda deixa de ser null e ele sai do selo pro tier real automaticamente
+    e.tier = (e.novo && !e.ultima_venda) ? 'novo' : r.tier;
     applyContactOverride_(e);
   });
 
@@ -808,14 +821,15 @@ function fmtMoney(v){ return v.toLocaleString('en-US', {style:'currency', curren
 function fmtDate_(s){ if(!s) return ''; const m = String(s).match(/^\d{4}-\d{2}-\d{2}/); return m ? m[0] : String(s); }
 function escapeHtml(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-const TIER_COLORS_ = {ativo:'#1E7B34', atencao:'#8A6D00', critico:'#B3261E', sumido:'#5A1E17', sem_venda_2026:'#4A5468'};
+const TIER_COLORS_ = {novo:'#0891B2', ativo:'#1E7B34', atencao:'#8A6D00', critico:'#B3261E', sumido:'#5A1E17', sem_venda_2026:'#4A5468'};
 function tierColor_(tier){ return TIER_COLORS_[tier] || 'transparent'; }
 
 function updateNavCounts(){
-  const counts = {ativo:0, atencao:0, critico:0, sumido:0, sem_venda_2026:0};
+  const counts = {novo:0, ativo:0, atencao:0, critico:0, sumido:0, sem_venda_2026:0};
   DATA.forEach(e => { if(counts[e.tier]!==undefined) counts[e.tier]++; });
   const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
   set('countTodos', DATA.length);
+  set('countNovo', counts.novo);
   set('countAtivo', counts.ativo);
   set('countAtencao', counts.atencao);
   set('countCritico', counts.critico);
@@ -823,9 +837,9 @@ function updateNavCounts(){
   set('countSemVenda', counts.sem_venda_2026);
 }
 
-document.querySelectorAll('.nav-item').forEach(item => {
+document.querySelectorAll('.nav-item[data-tier]').forEach(item => {
   item.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    document.querySelectorAll('.nav-item[data-tier]').forEach(i => i.classList.remove('active'));
     item.classList.add('active');
     document.getElementById('tierFilter').value = item.dataset.tier;
     applyFilters();
