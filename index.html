@@ -498,6 +498,12 @@
     <textarea id="cResumo" placeholder="Ex: respondeu, disse que vai testar semana que vem"></textarea>
     <label>Data</label>
     <input type="date" id="cData">
+    <label>Atendente que falou</label>
+    <select id="cAtendente">
+      <option value="">—</option>
+      <option value="Rayssa">Rayssa</option>
+      <option value="Manu">Manu</option>
+    </select>
     <div class="modal-actions">
       <button class="btn-ghost" id="cCancel">Cancelar</button>
       <button class="btn-orange" id="cSave">Salvar</button>
@@ -701,7 +707,7 @@ function serverAddedToLocal(obj){
 
 function serverContactsToLocal(obj){
   const out = {};
-  Object.keys(obj).forEach(k => { out[k] = {oferta: obj[k].oferta, resumo: obj[k].resumo, data: obj[k].data}; });
+  Object.keys(obj).forEach(k => { out[k] = {oferta: obj[k].oferta, resumo: obj[k].resumo, data: obj[k].data, atendente: obj[k].atendente || ''}; });
   return out;
 }
 
@@ -1057,7 +1063,8 @@ function contactLogCell(e){
   const key = normName(e.nome);
   const log = contactLog[key];
   if(!log) return '<span class="row-sub">—</span>';
-  return `<div class="contact-log"><b>${escapeHtml(log.oferta)}</b> · ${escapeHtml(fmtDate_(log.data))}<br>${escapeHtml(log.resumo||'')}</div>`;
+  const atendenteTxt = log.atendente ? ` · ${escapeHtml(log.atendente)}` : '';
+  return `<div class="contact-log"><b>${escapeHtml(log.oferta)}</b> · ${escapeHtml(fmtDate_(log.data))}${atendenteTxt}<br>${escapeHtml(log.resumo||'')}</div>`;
 }
 
 const PAGE_SIZE = 40;
@@ -1456,6 +1463,7 @@ function openContactModal(entry){
   const existing = contactLog[normName(entry.nome)];
   document.getElementById('cResumo').value = existing ? existing.resumo : '';
   document.getElementById('cData').value = existing ? existing.data : new Date().toISOString().slice(0,10);
+  document.getElementById('cAtendente').value = existing ? (existing.atendente || '') : '';
   if(existing) sel.value = existing.oferta;
   contactModalBg.classList.add('show');
 }
@@ -1466,12 +1474,13 @@ document.getElementById('cSave').addEventListener('click', async () => {
   const oferta = document.getElementById('cOferta').value;
   const resumo = document.getElementById('cResumo').value.trim();
   const data = document.getElementById('cData').value || new Date().toISOString().slice(0,10);
-  contactLog[key] = {oferta, resumo, data};
+  const atendente = document.getElementById('cAtendente').value;
+  contactLog[key] = {oferta, resumo, data, atendente};
   saveLS(LS_CONTACTS, contactLog);
   contactModalBg.classList.remove('show');
   renderTable();
   showToast(APPS_SCRIPT_URL ? 'Registrado — sincronizando...' : 'Contato registrado (salvo neste navegador)');
-  const res = await apiPost('logContact', {nome: contactModalTarget.nome, oferta, resumo, data});
+  const res = await apiPost('logContact', {nome: contactModalTarget.nome, oferta, resumo, data, atendente});
   if(res && res.ok){ syncStatus='ok'; showToast('Sincronizado com Google Sheets ✓'); }
   else if(APPS_SCRIPT_URL){ syncStatus='erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
   renderSyncBadge();

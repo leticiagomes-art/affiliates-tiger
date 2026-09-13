@@ -56,7 +56,7 @@ function setup() {
   }
   if (!ss.getSheetByName(SHEET_CONTACT)) {
     const sh = ss.insertSheet(SHEET_CONTACT);
-    sh.appendRow(['nome_norm', 'nome', 'oferta', 'resumo', 'data', 'atualizado_em']);
+    sh.appendRow(['nome_norm', 'nome', 'oferta', 'resumo', 'data', 'atendente', 'atualizado_em']);
   }
   if (!ss.getSheetByName(SHEET_IMPORT)) {
     const sh = ss.insertSheet(SHEET_IMPORT);
@@ -382,7 +382,7 @@ function doPost(e) {
       const key = normName_(d.nome);
       upsertRow_(SHEET_CONTACT, 'nome_norm', key, {
         nome_norm: key, nome: d.nome, oferta: d.oferta || '', resumo: d.resumo || '',
-        data: d.data || '', atualizado_em: now
+        data: d.data || '', atendente: d.atendente || '', atualizado_em: now
       });
     } else if (action === 'importBatch') {
       // body.data = array de registros de import (um por afiliado)
