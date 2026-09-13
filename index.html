@@ -267,6 +267,26 @@
       <span class="dot" style="background:#2F5597"></span>
       <span class="label">📈 Vendas por dia</span>
     </div>
+    <div class="nav-item nav-item-canal" data-canal="helpgrid">
+      <span class="dot" style="background:#7C3AED"></span>
+      <span class="label">🛟 Helpgrid</span>
+    </div>
+    <div class="nav-item nav-item-canal" data-canal="welcome_salesbound">
+      <span class="dot" style="background:#7C3AED"></span>
+      <span class="label">👋 Welcome · Sales Bound</span>
+    </div>
+    <div class="nav-item nav-item-canal" data-canal="welcome_isellforu">
+      <span class="dot" style="background:#7C3AED"></span>
+      <span class="label">👋 Welcome · iSellForU</span>
+    </div>
+    <div class="nav-item nav-item-canal" data-canal="gestor5">
+      <span class="dot" style="background:#7C3AED"></span>
+      <span class="label">📧 Email (Gestor 5)</span>
+    </div>
+    <div class="nav-item nav-item-canal" data-canal="gestor3">
+      <span class="dot" style="background:#7C3AED"></span>
+      <span class="label">💬 SMS (Gestor 3)</span>
+    </div>
   </div>
   <div id="headerStats"></div>
   <div class="sidebar-sync">
@@ -394,6 +414,23 @@
   </div>
 </div>
 
+<div id="viewCanal" style="display:none">
+  <h2 class="section-title"><span class="bar"></span><span id="canalTitulo"></span></h2>
+  <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia. <span id="canalInfo"></span></div>
+  <div class="kpi-row" id="canalKpis"></div>
+  <div class="period-tabs" id="canalTabs">
+    <button class="active" data-periodo="dia">Por dia (últimos 14)</button>
+    <button data-periodo="semana">Por semana</button>
+    <button data-periodo="mes">Por mês</button>
+  </div>
+  <div class="table-scroll">
+  <table id="canalTableEl">
+    <thead><tr id="canalHead"></tr></thead>
+    <tbody id="canalBody"></tbody>
+  </table>
+  </div>
+</div>
+
 </main>
 </div>
 
@@ -433,6 +470,14 @@
       <div>
         <label>Usuário/e-mail BuyGoods</label>
         <input type="text" id="mBuygoods" placeholder="Ex: joao@email.com">
+      </div>
+      <div>
+        <label>Atendente que falou com o afiliado</label>
+        <select id="mAtendente">
+          <option value="">—</option>
+          <option value="Rayssa">Rayssa</option>
+          <option value="Manu">Manu</option>
+        </select>
       </div>
     </div>
 
@@ -498,6 +543,14 @@
         <label>Usuário/e-mail BuyGoods</label>
         <input type="text" id="dBuygoods" placeholder="Ex: joao@email.com">
       </div>
+      <div>
+        <label>Atendente que falou com o afiliado</label>
+        <select id="dAtendente">
+          <option value="">—</option>
+          <option value="Rayssa">Rayssa</option>
+          <option value="Manu">Manu</option>
+        </select>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn-orange" id="dSaveMeta" style="flex:0 0 auto; padding:9px 16px;">Salvar dados</button>
@@ -550,6 +603,8 @@ const LS_REVENUE = 'tiger_revenue_daily_v1'; // faturamento real por dia (do rel
 const LS_REVENUE_NAMES = 'tiger_revenue_names_v1'; // nome de exibição de afiliados vistos só em import (nome_norm -> nome)
 const LS_LIFETIME = 'tiger_lifetime_stats_v1'; // totais vitalícios (desde o início da operação) do Master Affiliates, sem granularidade de data
 const LS_VENDAS_PRODUTO = 'tiger_vendas_produto_dia_v1'; // total de vendas da operação inteira, por produto e por dia (soma de todos os afiliados)
+const LS_VENDAS_VALOR = 'tiger_vendas_valor_dia_v1'; // bruto/reembolso/chargeback/frete/imposto por produto e por dia (mesma base do LS_VENDAS_PRODUTO)
+const LS_CANAIS = 'tiger_canais_interno_dia_v1'; // vendas/valores por dia das contas internas (Helpgrid, Welcome, Gestores) — normalmente excluídas do ranking de afiliados
 
 // ---------- Sincronização com Google Sheets (Apps Script) ----------
 // Depois de implantar o Apps Script (ver /apps_script/Code.gs), cole a URL aqui.
@@ -620,6 +675,8 @@ let revenueDaily = loadLS(LS_REVENUE, {});     // { nome_norm: { 'YYYY-MM-DD': {
 let revenueNames = loadLS(LS_REVENUE_NAMES, {}); // { nome_norm: 'Nome de exibição' } — pra afiliados só vistos em import
 let lifetimeStats = loadLS(LS_LIFETIME, {});   // { nome_norm: {nome, produtos, orders, gross, net, commissions, refunds} } — totais desde o início, sem data
 let vendasPorProdutoDia = loadLS(LS_VENDAS_PRODUTO, {}); // { produto: { 'YYYY-MM-DD': vendas } } — soma de todos os afiliados
+let vendasValorPorProdutoDia = loadLS(LS_VENDAS_VALOR, {}); // { produto: { 'YYYY-MM-DD': {gross,refund,chargeback,shipping,taxes} } }
+let canaisPorDia = loadLS(LS_CANAIS, {}); // { canalKey: { 'YYYY-MM-DD': {vendas,gross,refund,chargeback,shipping,taxes} } }
 let lastImportInfo = loadLS(LS_IMPORT_INFO, null);
 
 function serverAddedToLocal(obj){
@@ -653,7 +710,7 @@ function serverMetaToLocal(obj){
   Object.keys(obj).forEach(k => {
     const r = obj[k];
     out[k] = {nome_dash: r.nome_dash || '', trafego: r.trafego || '', cpa: r.cpa || '', buygoods_user: r.buygoods_user || '',
-      telefone: r.telefone || '', telegram: r.telegram || ''};
+      telefone: r.telefone || '', telegram: r.telegram || '', atendente: r.atendente || ''};
   });
   return out;
 }
@@ -667,6 +724,22 @@ function serverRevenueToLocal(obj){
 }
 
 function serverVendasProdutoToLocal(obj){
+  const out = {};
+  Object.keys(obj).forEach(k => {
+    try { out[k] = JSON.parse(obj[k].dados_json || '{}'); } catch(e){ out[k] = {}; }
+  });
+  return out;
+}
+
+function serverVendasValorToLocal(obj){
+  const out = {};
+  Object.keys(obj).forEach(k => {
+    try { out[k] = JSON.parse(obj[k].dados_json || '{}'); } catch(e){ out[k] = {}; }
+  });
+  return out;
+}
+
+function serverCanaisToLocal(obj){
   const out = {};
   Object.keys(obj).forEach(k => {
     try { out[k] = JSON.parse(obj[k].dados_json || '{}'); } catch(e){ out[k] = {}; }
@@ -724,6 +797,8 @@ async function syncFromServer(){
   Object.keys(j.revenue || {}).forEach(k => { if(j.revenue[k].nome) revenueNames[k] = j.revenue[k].nome; });
   lifetimeStats = serverLifetimeToLocal(j.lifetime || {});
   vendasPorProdutoDia = serverVendasProdutoToLocal(j.vendasPorProduto || {});
+  vendasValorPorProdutoDia = serverVendasValorToLocal(j.vendasValorPorProduto || {});
+  canaisPorDia = serverCanaisToLocal(j.canaisInterno || {});
   saveLS(LS_ADDED, addedAffiliates);
   saveLS(LS_CONTACTS, contactLog);
   saveLS(LS_UPDATES, importUpdates);
@@ -732,6 +807,8 @@ async function syncFromServer(){
   saveLS(LS_REVENUE_NAMES, revenueNames);
   saveLS(LS_LIFETIME, lifetimeStats);
   saveLS(LS_VENDAS_PRODUTO, vendasPorProdutoDia);
+  saveLS(LS_VENDAS_VALOR, vendasValorPorProdutoDia);
+  saveLS(LS_CANAIS, canaisPorDia);
   renderSyncBadge();
   return true;
 }
@@ -842,6 +919,7 @@ document.querySelectorAll('.nav-item[data-tier]').forEach(item => {
     document.querySelectorAll('.nav-item[data-tier]').forEach(i => i.classList.remove('active'));
     item.classList.add('active');
     document.getElementById('tierFilter').value = item.dataset.tier;
+    showView_('afiliados');
     applyFilters();
   });
 });
@@ -888,6 +966,7 @@ function contactCell(e){
   if(e.tg_user) html += `<br><a class="tg" href="https://t.me/${e.tg_user}" target="_blank">@${escapeHtml(e.tg_user)}</a><span class="conf conf-${e.conf_telegram}">${e.conf_telegram}</span>`;
   const meta = affiliateMeta[normName(e.nome)];
   if(meta && meta.buygoods_user) html += `<br><span class="bg-pill">BuyGoods: ${escapeHtml(meta.buygoods_user)}</span>`;
+  if(meta && meta.atendente) html += `<br><span class="bg-pill">Atendente: ${escapeHtml(meta.atendente)}</span>`;
   if(!html) return '<span class="no-contact">sem contato na base</span>';
   return `<div class="contact-links">${html}</div>`;
 }
@@ -1312,6 +1391,7 @@ document.getElementById('mSave').addEventListener('click', async () => {
   const trafego = document.getElementById('mTrafego').value;
   const cpa = document.getElementById('mCpa').value.trim();
   const buygoods = document.getElementById('mBuygoods').value.trim();
+  const atendente = document.getElementById('mAtendente').value;
   const novo = {
     nome,
     telefone: tel || null,
@@ -1330,20 +1410,20 @@ document.getElementById('mSave').addEventListener('click', async () => {
   };
   addedAffiliates.push(novo);
   saveLS(LS_ADDED, addedAffiliates);
-  const hasMeta = nomeDash || trafego || cpa || buygoods;
+  const hasMeta = nomeDash || trafego || cpa || buygoods || atendente;
   if(hasMeta){
-    affiliateMeta[normName(nome)] = {nome_dash: nomeDash, trafego, cpa, buygoods_user: buygoods};
+    affiliateMeta[normName(nome)] = {nome_dash: nomeDash, trafego, cpa, buygoods_user: buygoods, atendente};
     saveLS(LS_META, affiliateMeta);
   }
   DATA = buildData();
   addModalBg.classList.remove('show');
-  ['mNome','mTel','mTg','mProduto','mObs','mNomeDash','mTrafego','mCpa','mBuygoods'].forEach(id => document.getElementById(id).value = '');
+  ['mNome','mTel','mTg','mProduto','mObs','mNomeDash','mTrafego','mCpa','mBuygoods','mAtendente'].forEach(id => document.getElementById(id).value = '');
   applyFilters();
   showToast(APPS_SCRIPT_URL ? 'Afiliado adicionado — sincronizando...' : 'Afiliado adicionado (salvo neste navegador)');
   const res = await apiPost('addAffiliate', {nome, telefone: tel, telegram: tg, produto_planilha: produto, observacao: obs});
   let metaOk = true;
   if(hasMeta){
-    const metaRes = await apiPost('saveAffiliateMeta', {nome, nome_dash: nomeDash, trafego, cpa, buygoods_user: buygoods});
+    const metaRes = await apiPost('saveAffiliateMeta', {nome, nome_dash: nomeDash, trafego, cpa, buygoods_user: buygoods, atendente});
     metaOk = !!(metaRes && metaRes.ok);
   }
   if(res && res.ok && metaOk){ syncStatus='ok'; showToast('Sincronizado com Google Sheets ✓'); }
@@ -1427,6 +1507,7 @@ function openDetailModal(entry){
   document.getElementById('dTrafego').value = meta.trafego || '';
   document.getElementById('dCpa').value = meta.cpa || '';
   document.getElementById('dBuygoods').value = meta.buygoods_user || '';
+  document.getElementById('dAtendente').value = meta.atendente || '';
 
   document.querySelectorAll('#periodTabs button').forEach(b => b.classList.toggle('active', b.dataset.period === detailPeriod));
   renderDetailChart(entry, detailPeriod);
@@ -1451,7 +1532,8 @@ document.getElementById('dSaveMeta').addEventListener('click', async () => {
     nome_dash: document.getElementById('dNomeDash').value.trim(),
     trafego: document.getElementById('dTrafego').value,
     cpa: document.getElementById('dCpa').value.trim(),
-    buygoods_user: document.getElementById('dBuygoods').value.trim()
+    buygoods_user: document.getElementById('dBuygoods').value.trim(),
+    atendente: document.getElementById('dAtendente').value
   };
   affiliateMeta[key] = meta;
   saveLS(LS_META, affiliateMeta);
@@ -1544,6 +1626,36 @@ const EXCLUDE_PATTERNS = ['helpgrid','maxweb','mwe','tiger offers','jose moraes'
 function isExcludedName(n){
   if(!n) return true;
   return EXCLUDE_PATTERNS.some(p => n.includes(p));
+}
+
+// Contas internas que ficam de fora do ranking de afiliados (acima) mas têm sua própria visão de
+// vendas na lateral — "n" já chega normalizado (normName: minúsculo, sem acento, espaços colapsados).
+const CANAL_DEFS = [
+  {key:'helpgrid', label:'Helpgrid', match:n => n.includes('helpgrid')},
+  {key:'welcome_salesbound', label:'Welcome · Sales Bound', match:n => n.replace(/\s+/g,'').includes('salesbound')},
+  {key:'welcome_isellforu', label:'Welcome · iSellForU', match:n => n.replace(/\s+/g,'').includes('isellforu')},
+  {key:'gestor5', label:'Email (Gestor 5)', match:n => n.includes('gestor') && n.includes('five')},
+  {key:'gestor3', label:'SMS (Gestor 3)', match:n => n.includes('gestor') && n.includes('three')}
+];
+function canalDoNome_(nomeNorm){
+  if(!nomeNorm) return null;
+  const def = CANAL_DEFS.find(c => c.match(nomeNorm));
+  return def ? def.key : null;
+}
+function netOf_(v){
+  if(!v) return null;
+  return (v.gross||0) - (v.refund||0) - (v.chargeback||0) - (v.shipping||0) - (v.taxes||0);
+}
+function acumulaValor_(acc, actionType, row, hidx){
+  if(actionType === 'neworder'){
+    acc.gross += parseFloat(row[hidx['Gross']]) || 0;
+    if('Shipping Cost' in hidx) acc.shipping += parseFloat(row[hidx['Shipping Cost']]) || 0;
+    if('Taxes' in hidx) acc.taxes += parseFloat(row[hidx['Taxes']]) || 0;
+  } else if(actionType === 'refund'){
+    acc.refund += parseFloat(row[hidx['Refund Amount']]) || 0;
+  } else if(actionType === 'chargeback'){
+    acc.chargeback += parseFloat(row[hidx['Chargeback Amount']]) || 0;
+  }
 }
 
 document.getElementById('buyGoodsImportFile').addEventListener('change', (ev) => {
@@ -1753,6 +1865,8 @@ function recalcTierFromLastSale_(ultimaVendaStr){
 function processBuyGoodsImport(wb, filename){
   const byAff = {}; // nome_norm -> {nome, produtos:Set, daily:{dayKey:{vendas,faturamento}}}
   const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS os afiliados (inclusive internos), pra bater com o total real da operação
+  const valorProdutoDia = {}; // produto -> {dayKey: {gross,refund,chargeback,shipping,taxes}} — mesma base do porProdutoDia
+  const canaisDia = {}; // canalKey -> {dayKey: {vendas,gross,refund,chargeback,shipping,taxes}} — Helpgrid, Welcome, Gestores
   let sheetsLidas = 0;
   let diasEncontrados = new Set();
 
@@ -1783,13 +1897,28 @@ function processBuyGoodsImport(wb, filename){
       diasEncontrados.add(dayKey);
 
       const actionType = row[hidx['Action Type']];
+      const nkey = normName(nome);
 
       if(actionType === 'neworder'){
         if(!porProdutoDia[produto]) porProdutoDia[produto] = {};
         porProdutoDia[produto][dayKey] = (porProdutoDia[produto][dayKey] || 0) + 1;
       }
 
-      const nkey = normName(nome);
+      // bruto/líquido por produto e por dia — mesma regra do porProdutoDia acima: todo mundo, sem exclusão
+      if(!valorProdutoDia[produto]) valorProdutoDia[produto] = {};
+      if(!valorProdutoDia[produto][dayKey]) valorProdutoDia[produto][dayKey] = {gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
+      acumulaValor_(valorProdutoDia[produto][dayKey], actionType, row, hidx);
+
+      // contas internas com visão própria na lateral (Helpgrid, Welcome, Gestores) — também sem exclusão,
+      // é justamente o propósito dessas abas
+      const canalKey = canalDoNome_(nkey);
+      if(canalKey){
+        if(!canaisDia[canalKey]) canaisDia[canalKey] = {};
+        if(!canaisDia[canalKey][dayKey]) canaisDia[canalKey][dayKey] = {vendas:0, gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
+        if(actionType === 'neworder') canaisDia[canalKey][dayKey].vendas++;
+        acumulaValor_(canaisDia[canalKey][dayKey], actionType, row, hidx);
+      }
+
       if(!nkey || isExcludedName(nkey)) continue;
 
       if(!byAff[nkey]) byAff[nkey] = {nome, produtos:new Set(), daily:{}};
@@ -1878,6 +2007,26 @@ function processBuyGoodsImport(wb, filename){
   });
   saveLS(LS_VENDAS_PRODUTO, vendasPorProdutoDia);
 
+  // idem pro bruto/líquido por produto (reimportar é seguro — sobrescreve o dia)
+  const produtosValorTocados = Object.keys(valorProdutoDia);
+  produtosValorTocados.forEach(produto => {
+    if(!vendasValorPorProdutoDia[produto]) vendasValorPorProdutoDia[produto] = {};
+    Object.keys(valorProdutoDia[produto]).forEach(dayKey => {
+      vendasValorPorProdutoDia[produto][dayKey] = valorProdutoDia[produto][dayKey];
+    });
+  });
+  saveLS(LS_VENDAS_VALOR, vendasValorPorProdutoDia);
+
+  // idem pros canais internos (Helpgrid, Welcome, Gestores)
+  const canaisTocados = Object.keys(canaisDia);
+  canaisTocados.forEach(canalKey => {
+    if(!canaisPorDia[canalKey]) canaisPorDia[canalKey] = {};
+    Object.keys(canaisDia[canalKey]).forEach(dayKey => {
+      canaisPorDia[canalKey][dayKey] = canaisDia[canalKey][dayKey];
+    });
+  });
+  saveLS(LS_CANAIS, canaisPorDia);
+
   const diasOrdenados = Array.from(diasEncontrados).sort();
   const periodoTxt = diasOrdenados.length > 1 ? `${diasOrdenados[0]} a ${diasOrdenados[diasOrdenados.length-1]}` : (diasOrdenados[0] || '—');
   lastImportInfo = {filename, date: new Date().toISOString(), updated: updatedCount, novos: newCount, periodo: periodoTxt};
@@ -1889,6 +2038,7 @@ function processBuyGoodsImport(wb, filename){
   applyFilters();
   renderImportInfo();
   renderVendasDia();
+  if(canalAtivo) renderCanal();
   showToast(`Importado (${periodoTxt}): ${updatedCount} atualizados, ${newCount} novos sem contato` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
 
   if(APPS_SCRIPT_URL){
@@ -1899,8 +2049,14 @@ function processBuyGoodsImport(wb, filename){
     });
     const revenueBatch = keys.map(key => ({nome: byAff[key].nome, dados_json: JSON.stringify(revenueDaily[key])}));
     const vendasProdutoBatch = produtosTocados.map(produto => ({produto, dados_json: JSON.stringify(vendasPorProdutoDia[produto])}));
-    Promise.all([apiPost('importBatch', importBatch), apiPost('importRevenueBatch', revenueBatch), apiPost('importVendasProdutoBatch', vendasProdutoBatch)]).then(([r1, r2, r3]) => {
-      if(r1 && r1.ok && r2 && r2.ok && r3 && r3.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
+    const vendasValorBatch = produtosValorTocados.map(produto => ({produto, dados_json: JSON.stringify(vendasValorPorProdutoDia[produto])}));
+    const canaisBatch = canaisTocados.map(canal => ({canal, dados_json: JSON.stringify(canaisPorDia[canal])}));
+    Promise.all([
+      apiPost('importBatch', importBatch), apiPost('importRevenueBatch', revenueBatch),
+      apiPost('importVendasProdutoBatch', vendasProdutoBatch), apiPost('importVendasValorBatch', vendasValorBatch),
+      apiPost('importCanaisBatch', canaisBatch)
+    ]).then(([r1, r2, r3, r4, r5]) => {
+      if(r1 && r1.ok && r2 && r2.ok && r3 && r3.ok && r4 && r4.ok && r5 && r5.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
       else { syncStatus='erro'; showToast('Import salvo localmente, mas não sincronizou com o Sheets ainda'); }
       renderSyncBadge();
     });
@@ -1965,21 +2121,42 @@ function renderVendasDiaKPIs_(){
   });
   const semDadoOntem = totalOntem === 0 && ultimoDiaComDado && ultimoDiaComDado < ontemKey;
 
+  // bruto/líquido dos mesmos períodos (fonte separada — só existe pros dias já reimportados depois
+  // que essa coluna foi adicionada; dia sem esse dado mostra "sem dado de valor ainda")
+  const somaValor_ = filtro => {
+    const acc = {gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
+    let temDado = false;
+    Object.values(vendasValorPorProdutoDia).forEach(porDia => {
+      Object.keys(porDia).forEach(dayKey => {
+        if(!filtro(dayKey)) return;
+        temDado = true;
+        const v = porDia[dayKey];
+        acc.gross += v.gross||0; acc.refund += v.refund||0; acc.chargeback += v.chargeback||0;
+        acc.shipping += v.shipping||0; acc.taxes += v.taxes||0;
+      });
+    });
+    return temDado ? acc : null;
+  };
+  const valorTxt_ = v => v ? `${fmtMoney(v.gross)} bruto · ${fmtMoney(netOf_(v))} líquido` : 'sem dado de valor ainda';
+
   el.innerHTML = `
     <div class="mini-kpi">
       <div class="lab">Ontem (${diaLbl_(ontemKey)})</div>
       <div class="val">${totalOntem}</div>
       <div class="note">${semDadoOntem ? 'sem import ainda — último dado: '+diaLbl_(ultimoDiaComDado) : 'vendas (order items)'}</div>
+      <div class="note">${valorTxt_(somaValor_(d => d===ontemKey))}</div>
     </div>
     <div class="mini-kpi">
       <div class="lab">Esta semana</div>
       <div class="val">${totalSemana}</div>
       <div class="note">desde ${diaLbl_(semanaAtualMonday)}</div>
+      <div class="note">${valorTxt_(somaValor_(d => isoWeekMonday_(d)===semanaAtualMonday))}</div>
     </div>
     <div class="mini-kpi">
       <div class="lab">Este mês</div>
       <div class="val">${totalMes}</div>
       <div class="note">${mesLblCurto_(mesAtual)}</div>
+      <div class="note">${valorTxt_(somaValor_(d => d.slice(0,7)===mesAtual))}</div>
     </div>`;
 }
 let vendasDiaPeriodo = 'dia';
@@ -2009,18 +2186,31 @@ function renderVendasDiaTable_(){
     getVal = (produto,col) => vendasPorProdutoDia[produto][col] || 0;
   }
   const totalDoProduto = produto => Object.values(vendasPorProdutoDia[produto]).reduce((s,v)=>s+(v||0),0);
+  const valorDoProduto = produto => {
+    const porDia = vendasValorPorProdutoDia[produto];
+    if(!porDia) return null;
+    const acc = {gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
+    let temDado = false;
+    Object.values(porDia).forEach(v => { temDado = true; acc.gross+=v.gross||0; acc.refund+=v.refund||0; acc.chargeback+=v.chargeback||0; acc.shipping+=v.shipping||0; acc.taxes+=v.taxes||0; });
+    return temDado ? acc : null;
+  };
 
-  head.innerHTML = `<th style="width:16%">Produto</th>` + colLabels.map(l=>`<th class="r num">${escapeHtml(l)}</th>`).join('') + `<th class="r num">Total</th>`;
+  head.innerHTML = `<th style="width:16%">Produto</th>` + colLabels.map(l=>`<th class="r num">${escapeHtml(l)}</th>`).join('') + `<th class="r num">Total</th><th class="r num">Bruto</th><th class="r num">Líquido</th>`;
   body.innerHTML = produtos.map(produto => {
     const cells = colKeys.map(c => {
       const v = getVal(produto,c);
       return `<td class="r num">${v ? v : '<span style="color:var(--line)">·</span>'}</td>`;
     }).join('');
-    return `<tr><td class="row-name">${escapeHtml(produto)}</td>${cells}<td class="r num" style="font-weight:700">${totalDoProduto(produto)}</td></tr>`;
+    const valor = valorDoProduto(produto);
+    const grossTxt = valor ? fmtMoney(valor.gross) : '<span style="color:var(--line)">·</span>';
+    const netTxt = valor ? fmtMoney(netOf_(valor)) : '<span style="color:var(--line)">·</span>';
+    return `<tr><td class="row-name">${escapeHtml(produto)}</td>${cells}<td class="r num" style="font-weight:700">${totalDoProduto(produto)}</td><td class="r num">${grossTxt}</td><td class="r num">${netTxt}</td></tr>`;
   }).join('') +
     `<tr style="background:var(--row-even); font-weight:700"><td>TOTAL</td>` +
     colKeys.map(c => `<td class="r num">${produtos.reduce((s,p)=>s+getVal(p,c),0)}</td>`).join('') +
-    `<td class="r num">${produtos.reduce((s,p)=>s+totalDoProduto(p),0)}</td></tr>`;
+    `<td class="r num">${produtos.reduce((s,p)=>s+totalDoProduto(p),0)}</td>` +
+    `<td class="r num">${fmtMoney(produtos.reduce((s,p)=>{const v=valorDoProduto(p); return s+(v?v.gross:0);},0))}</td>` +
+    `<td class="r num">${fmtMoney(produtos.reduce((s,p)=>{const v=valorDoProduto(p); return s+(v?netOf_(v):0);},0))}</td></tr>`;
 }
 function renderVendasDia(){
   renderVendasDiaKPIs_();
@@ -2039,12 +2229,125 @@ document.querySelectorAll('#vendasDiaTabs button').forEach(btn => {
     renderVendasDiaTable_();
   });
 });
+// Alterna entre as 3 grandes seções da tela: lista de afiliados, Vendas por dia, e a visão de
+// canal interno (Helpgrid/Welcome/Gestores) — só uma fica visível por vez.
+function showView_(which){ // 'afiliados' | 'vendasDia' | 'canal'
+  document.getElementById('afiliadosSection').style.display = which === 'afiliados' ? '' : 'none';
+  document.getElementById('viewVendasDia').style.display = which === 'vendasDia' ? '' : 'none';
+  document.getElementById('viewCanal').style.display = which === 'canal' ? '' : 'none';
+  document.getElementById('navVendasDia').classList.toggle('active', which === 'vendasDia');
+  document.querySelectorAll('.nav-item-canal').forEach(n => n.classList.toggle('active', which === 'canal' && n.dataset.canal === canalAtivo));
+}
+
+// ---------- Visão de canal interno (Helpgrid / Welcome · Sales Bound / iSellForU / Gestor 5 / Gestor 3) ----------
+let canalAtivo = null;
+let canalPeriodo = 'dia';
+function canalAllDays_(key){
+  return Object.keys(canaisPorDia[key] || {}).sort();
+}
+function somaCanalPeriodo_(key, filtro){
+  const dados = canaisPorDia[key] || {};
+  const acc = {vendas:0, gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
+  Object.keys(dados).forEach(dayKey => {
+    if(!filtro(dayKey)) return;
+    const d = dados[dayKey];
+    acc.vendas += d.vendas||0; acc.gross += d.gross||0; acc.refund += d.refund||0;
+    acc.chargeback += d.chargeback||0; acc.shipping += d.shipping||0; acc.taxes += d.taxes||0;
+  });
+  return acc;
+}
+function renderCanalKPIs_(key){
+  const el = document.getElementById('canalKpis');
+  if(!el) return;
+  const hojeKey = new Date().toISOString().slice(0,10);
+  const ontemKey = new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const mesAtual = hojeKey.slice(0,7);
+  const semanaAtualMonday = isoWeekMonday_(hojeKey);
+
+  const ontem = somaCanalPeriodo_(key, d => d===ontemKey);
+  const semana = somaCanalPeriodo_(key, d => isoWeekMonday_(d)===semanaAtualMonday);
+  const mes = somaCanalPeriodo_(key, d => d.slice(0,7)===mesAtual);
+  const allDays = canalAllDays_(key);
+  const ultimoDia = allDays.length ? allDays[allDays.length-1] : null;
+  const semDadoOntem = ontem.vendas === 0 && ultimoDia && ultimoDia < ontemKey;
+
+  const cardHtml = (lab, v, note) => `
+    <div class="mini-kpi">
+      <div class="lab">${lab}</div>
+      <div class="val">${v.vendas}</div>
+      <div class="note">${note}</div>
+      <div class="note">${fmtMoney(v.gross)} bruto · ${fmtMoney(netOf_(v))} líquido</div>
+    </div>`;
+  el.innerHTML =
+    cardHtml(`Ontem (${diaLbl_(ontemKey)})`, ontem, semDadoOntem ? 'sem import ainda — último dado: '+diaLbl_(ultimoDia) : 'vendas (order items)') +
+    cardHtml('Esta semana', semana, 'desde '+diaLbl_(semanaAtualMonday)) +
+    cardHtml('Este mês', mes, mesLblCurto_(mesAtual));
+}
+function renderCanalTable_(key){
+  const head = document.getElementById('canalHead');
+  const body = document.getElementById('canalBody');
+  if(!head || !body) return;
+  const allDays = canalAllDays_(key);
+  if(!allDays.length){
+    head.innerHTML = '<th>Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';
+    body.innerHTML = '<tr><td colspan="4" class="row-sub">Sem venda registrada ainda pra essa conta — some assim que aparecer num relatório BuyGoods importado.</td></tr>';
+    return;
+  }
+  let colKeys, colLabels, agrupador;
+  if(canalPeriodo === 'semana'){
+    colKeys = Array.from(new Set(allDays.map(isoWeekMonday_))).sort();
+    colLabels = colKeys.map(w => 'Sem '+diaLbl_(w));
+    agrupador = d => isoWeekMonday_(d);
+  } else if(canalPeriodo === 'mes'){
+    colKeys = Array.from(new Set(allDays.map(d=>d.slice(0,7)))).sort();
+    colLabels = colKeys.map(mesLblCurto_);
+    agrupador = d => d.slice(0,7);
+  } else {
+    colKeys = allDays.slice(-14);
+    colLabels = colKeys.map(diaLbl_);
+    agrupador = d => d;
+  }
+  const valoresPorCol = colKeys.map(c => somaCanalPeriodo_(key, d => agrupador(d)===c));
+
+  head.innerHTML = '<th style="width:20%">Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';
+  const rows = colLabels.map((lbl,i) => {
+    const v = valoresPorCol[i];
+    return `<tr><td class="row-name">${escapeHtml(lbl)}</td><td class="r num">${v.vendas || '<span style="color:var(--line)">·</span>'}</td><td class="r num">${fmtMoney(v.gross)}</td><td class="r num">${fmtMoney(netOf_(v))}</td></tr>`;
+  }).join('');
+  const total = valoresPorCol.reduce((acc,v) => { acc.vendas+=v.vendas; acc.gross+=v.gross; acc.refund+=v.refund; acc.chargeback+=v.chargeback; acc.shipping+=v.shipping; acc.taxes+=v.taxes; return acc; }, {vendas:0,gross:0,refund:0,chargeback:0,shipping:0,taxes:0});
+  body.innerHTML = rows + `<tr style="background:var(--row-even); font-weight:700"><td>TOTAL</td><td class="r num">${total.vendas}</td><td class="r num">${fmtMoney(total.gross)}</td><td class="r num">${fmtMoney(netOf_(total))}</td></tr>`;
+}
+function renderCanal(){
+  if(!canalAtivo) return;
+  const def = CANAL_DEFS.find(c => c.key === canalAtivo);
+  document.getElementById('canalTitulo').textContent = def ? def.label : '';
+  renderCanalKPIs_(canalAtivo);
+  renderCanalTable_(canalAtivo);
+  const info = document.getElementById('canalInfo');
+  if(info){
+    const dias = canalAllDays_(canalAtivo);
+    info.textContent = dias.length ? `Dados de ${diaLbl_(dias[0])} a ${diaLbl_(dias[dias.length-1])}.` : 'Ainda sem venda registrada pra essa conta.';
+  }
+}
+document.querySelectorAll('#canalTabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#canalTabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    canalPeriodo = btn.dataset.periodo;
+    renderCanalTable_(canalAtivo);
+  });
+});
+document.querySelectorAll('.nav-item-canal').forEach(item => {
+  item.addEventListener('click', () => {
+    canalAtivo = item.dataset.canal;
+    showView_('canal');
+    renderCanal();
+  });
+});
+
 document.getElementById('navVendasDia').addEventListener('click', () => {
-  const showingVendas = document.getElementById('viewVendasDia').style.display !== 'none';
-  document.getElementById('afiliadosSection').style.display = showingVendas ? '' : 'none';
-  document.getElementById('viewVendasDia').style.display = showingVendas ? 'none' : '';
-  document.getElementById('navVendasDia').classList.toggle('active', !showingVendas);
-  if(!showingVendas) renderVendasDia();
+  showView_('vendasDia');
+  renderVendasDia();
 });
 
 renderImportInfo();

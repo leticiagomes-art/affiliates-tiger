@@ -28,6 +28,13 @@
  *   por dia — alimentada pelo mesmo import diário do BuyGoods (aba "Importar relatório BuyGoods"), 1 linha
  *   por produto com um JSON acumulado dia a dia na coluna dados_json. Semana/mês são somados no navegador
  *   a partir do dado diário, não ficam guardados prontos aqui.
+ * - VendasValorProdutoDia: mesma ideia da VendasPorProdutoDia, mas guardando bruto/reembolso/chargeback/
+ *   frete/imposto por produto e por dia (pra calcular "Gross" e "Líquido" na tela) em vez de só a contagem
+ *   de vendas.
+ * - CanaisInternoDia: total de vendas/valores por dia de contas internas específicas (Helpgrid, Welcome ·
+ *   Sales Bound, Welcome · iSellForU, Gestor 5/e-mail, Gestor 3/SMS) — essas contas são excluídas do
+ *   ranking normal de afiliados (EXCLUDE_PATTERNS no index.html), mas entram aqui de propósito pra dar
+ *   visibilidade de canal interno. 1 linha por canal com JSON acumulado dia a dia na coluna dados_json.
  */
 
 const SHEET_ADDED = 'AddedAffiliates';
@@ -37,6 +44,8 @@ const SHEET_META = 'AffiliateMeta';
 const SHEET_REVENUE = 'RevenueDaily';
 const SHEET_LIFETIME = 'LifetimeStats';
 const SHEET_VENDAS_PRODUTO = 'VendasPorProdutoDia';
+const SHEET_VENDAS_VALOR = 'VendasValorProdutoDia';
+const SHEET_CANAIS = 'CanaisInternoDia';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -57,7 +66,7 @@ function setup() {
   }
   if (!ss.getSheetByName(SHEET_META)) {
     const sh = ss.insertSheet(SHEET_META);
-    sh.appendRow(['nome_norm', 'nome', 'nome_dash', 'trafego', 'cpa', 'buygoods_user', 'telefone', 'telegram', 'atualizado_em']);
+    sh.appendRow(['nome_norm', 'nome', 'nome_dash', 'trafego', 'cpa', 'buygoods_user', 'telefone', 'telegram', 'atendente', 'atualizado_em']);
   }
   if (!ss.getSheetByName(SHEET_REVENUE)) {
     const sh = ss.insertSheet(SHEET_REVENUE);
@@ -70,6 +79,14 @@ function setup() {
   if (!ss.getSheetByName(SHEET_VENDAS_PRODUTO)) {
     const sh = ss.insertSheet(SHEET_VENDAS_PRODUTO);
     sh.appendRow(['produto', 'dados_json', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_VENDAS_VALOR)) {
+    const sh = ss.insertSheet(SHEET_VENDAS_VALOR);
+    sh.appendRow(['produto', 'dados_json', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_CANAIS)) {
+    const sh = ss.insertSheet(SHEET_CANAIS);
+    sh.appendRow(['canal', 'dados_json', 'atualizado_em']);
   }
   // remove a aba padrão "Sheet1"/"Página1" se estiver vazia
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Página1');
@@ -319,6 +336,8 @@ function doGet(e) {
       revenue: sheetToObjects_(SHEET_REVENUE),
       lifetime: sheetToObjects_(SHEET_LIFETIME),
       vendasPorProduto: sheetToObjectsBy_(SHEET_VENDAS_PRODUTO, 'produto'),
+      vendasValorPorProduto: sheetToObjectsBy_(SHEET_VENDAS_VALOR, 'produto'),
+      canaisInterno: sheetToObjectsBy_(SHEET_CANAIS, 'canal'),
       ok: true
     };
   } else {
@@ -329,7 +348,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importVendasValorBatch' | 'importCanaisBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -356,7 +375,7 @@ function doPost(e) {
       upsertRow_(SHEET_META, 'nome_norm', key, {
         nome_norm: key, nome: d.nome, nome_dash: d.nome_dash || '', trafego: d.trafego || '',
         cpa: d.cpa || '', buygoods_user: d.buygoods_user || '',
-        telefone: d.telefone || '', telegram: d.telegram || '', atualizado_em: now
+        telefone: d.telefone || '', telegram: d.telegram || '', atendente: d.atendente || '', atualizado_em: now
       });
     } else if (action === 'logContact') {
       const d = body.data;
@@ -400,6 +419,28 @@ function doPost(e) {
         if (!d.produto) return;
         upsertRow_(SHEET_VENDAS_PRODUTO, 'produto', d.produto, {
           produto: d.produto, dados_json: d.dados_json || '{}', atualizado_em: now
+        });
+      });
+      result.processed = arr.length;
+    } else if (action === 'importVendasValorBatch') {
+      // body.data = array de {produto, dados_json} — mesmo padrão do importVendasProdutoBatch, mas
+      // guardando {gross,refund,chargeback,shipping,taxes} por dia em vez da contagem de vendas
+      const arr = body.data || [];
+      arr.forEach(d => {
+        if (!d.produto) return;
+        upsertRow_(SHEET_VENDAS_VALOR, 'produto', d.produto, {
+          produto: d.produto, dados_json: d.dados_json || '{}', atualizado_em: now
+        });
+      });
+      result.processed = arr.length;
+    } else if (action === 'importCanaisBatch') {
+      // body.data = array de {canal, dados_json} — total por dia (vendas/gross/refund/chargeback/
+      // shipping/taxes) das contas internas (Helpgrid, Welcome · Sales Bound/iSellForU, Gestor 5/3)
+      const arr = body.data || [];
+      arr.forEach(d => {
+        if (!d.canal) return;
+        upsertRow_(SHEET_CANAIS, 'canal', d.canal, {
+          canal: d.canal, dados_json: d.dados_json || '{}', atualizado_em: now
         });
       });
       result.processed = arr.length;
