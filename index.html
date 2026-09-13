@@ -2235,6 +2235,8 @@ function showView_(which){ // 'afiliados' | 'vendasDia' | 'canal'
   document.getElementById('afiliadosSection').style.display = which === 'afiliados' ? '' : 'none';
   document.getElementById('viewVendasDia').style.display = which === 'vendasDia' ? '' : 'none';
   document.getElementById('viewCanal').style.display = which === 'canal' ? '' : 'none';
+  const tier = document.getElementById('tierFilter').value;
+  document.querySelectorAll('.nav-item[data-tier]').forEach(n => n.classList.toggle('active', which === 'afiliados' && n.dataset.tier === tier));
   document.getElementById('navVendasDia').classList.toggle('active', which === 'vendasDia');
   document.querySelectorAll('.nav-item-canal').forEach(n => n.classList.toggle('active', which === 'canal' && n.dataset.canal === canalAtivo));
 }
