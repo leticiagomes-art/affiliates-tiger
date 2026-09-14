@@ -35,6 +35,12 @@
  *   Sales Bound, Welcome · iSellForU, Gestor 5/e-mail, Gestor 3/SMS) — essas contas são excluídas do
  *   ranking normal de afiliados (EXCLUDE_PATTERNS no index.html), mas entram aqui de propósito pra dar
  *   visibilidade de canal interno. 1 linha por canal com JSON acumulado dia a dia na coluna dados_json.
+ * - CanalLifetime: totais gerais (sem data, desde quando o export "Master Affiliates" cobrir) das mesmas
+ *   contas internas acima — 1 linha por canal, atualizada por merge (um arquivo que só tem Helpgrid não
+ *   apaga o histórico de Gestor 5/3, por exemplo).
+ * - CanalMensal: mesma ideia, mas quando o Master Affiliates vem separado mês a mês — 1 linha por
+ *   canal+mês (chave composta na coluna id), pra completar a coluna "Por mês" da tela mesmo sem import
+ *   diário do BuyGoods pra essas contas ainda.
  */
 
 const SHEET_ADDED = 'AddedAffiliates';
@@ -46,6 +52,8 @@ const SHEET_LIFETIME = 'LifetimeStats';
 const SHEET_VENDAS_PRODUTO = 'VendasPorProdutoDia';
 const SHEET_VENDAS_VALOR = 'VendasValorProdutoDia';
 const SHEET_CANAIS = 'CanaisInternoDia';
+const SHEET_CANAL_LIFETIME = 'CanalLifetime';
+const SHEET_CANAL_MENSAL = 'CanalMensal';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -87,6 +95,14 @@ function setup() {
   if (!ss.getSheetByName(SHEET_CANAIS)) {
     const sh = ss.insertSheet(SHEET_CANAIS);
     sh.appendRow(['canal', 'dados_json', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_CANAL_LIFETIME)) {
+    const sh = ss.insertSheet(SHEET_CANAL_LIFETIME);
+    sh.appendRow(['canal', 'orders', 'gross', 'net', 'refunds', 'taxes', 'periodo', 'atualizado_em']);
+  }
+  if (!ss.getSheetByName(SHEET_CANAL_MENSAL)) {
+    const sh = ss.insertSheet(SHEET_CANAL_MENSAL);
+    sh.appendRow(['id', 'canal', 'mes', 'orders', 'gross', 'net', 'refunds', 'taxes', 'atualizado_em']);
   }
   // remove a aba padrão "Sheet1"/"Página1" se estiver vazia
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Página1');
@@ -338,6 +354,8 @@ function doGet(e) {
       vendasPorProduto: sheetToObjectsBy_(SHEET_VENDAS_PRODUTO, 'produto'),
       vendasValorPorProduto: sheetToObjectsBy_(SHEET_VENDAS_VALOR, 'produto'),
       canaisInterno: sheetToObjectsBy_(SHEET_CANAIS, 'canal'),
+      canalLifetime: sheetToObjectsBy_(SHEET_CANAL_LIFETIME, 'canal'),
+      canalMensal: sheetToObjectsBy_(SHEET_CANAL_MENSAL, 'id'),
       ok: true
     };
   } else {
@@ -348,7 +366,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importVendasValorBatch' | 'importCanaisBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importVendasValorBatch' | 'importCanaisBatch' | 'importCanalLifetimeBatch' | 'importCanalMensalBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -444,6 +462,25 @@ function doPost(e) {
         });
       });
       result.processed = arr.length;
+    } else if (action === 'importCanalLifetimeBatch') {
+      // body.data = array de {canal, orders, gross, net, refunds, taxes, periodo} — histórico geral
+      // (sem data) das contas internas, vindo do export Master Affiliates. Merge por canal, não
+      // substitui a aba inteira (bulkMergeSheet_ preserva canais não mencionados nesse arquivo).
+      const arr = body.data || [];
+      const updates = arr.filter(d => d && d.canal).map(d => Object.assign({}, d, { atualizado_em: now }));
+      bulkMergeSheet_(SHEET_CANAL_LIFETIME, 'canal', updates);
+      result.processed = updates.length;
+    } else if (action === 'importCanalMensalBatch') {
+      // body.data = array de {canal, mes, orders, gross, net, refunds, taxes} — histórico por canal E
+      // por mês (quando o Master Affiliates vem separado mês a mês), pra completar a coluna "Por mês"
+      // das contas internas mesmo sem import diário. Chave composta canal+mes (bulkMergeSheet_ só
+      // aceita 1 campo de chave), merge preserva outros meses/canais não mencionados nesse arquivo.
+      const arr = body.data || [];
+      const updates = arr.filter(d => d && d.canal && d.mes).map(d => Object.assign({}, d, {
+        id: d.canal + '__' + d.mes, atualizado_em: now
+      }));
+      bulkMergeSheet_(SHEET_CANAL_MENSAL, 'id', updates);
+      result.processed = updates.length;
     } else if (action === 'importLifetimeBatch') {
       // body.data = array COMPLETO (substitui a aba inteira) — importação única da base histórica
       const arr = body.data || [];
