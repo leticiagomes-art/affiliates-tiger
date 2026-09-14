@@ -2074,7 +2074,7 @@ function recalcTierFromLastSale_(ultimaVendaStr){
 // ---------- Importar relatório BuyGoods (Relatorio_BuyGoods_AAAA-MM-DD.xlsx, uma aba por produto) ----------
 // Bucketiza por "Create Date" de cada linha (não pelo nome do arquivo), então funciona tanto pro
 // relatório diário (1 dia) quanto pra uma exportação com meses/ano inteiro de uma vez.
-function processBuyGoodsImport(wb, filename){
+async function processBuyGoodsImport(wb, filename){
   const byAff = {}; // nome_norm -> {nome, produtos:Set, daily:{dayKey:{vendas,faturamento}}}
   const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS os afiliados (inclusive internos), pra bater com o total real da operação
   const valorProdutoDia = {}; // produto -> {dayKey: {gross,refund,chargeback,shipping,taxes}} — mesma base do porProdutoDia
@@ -2263,15 +2263,14 @@ function processBuyGoodsImport(wb, filename){
     const vendasProdutoBatch = produtosTocados.map(produto => ({produto, dados_json: JSON.stringify(vendasPorProdutoDia[produto])}));
     const vendasValorBatch = produtosValorTocados.map(produto => ({produto, dados_json: JSON.stringify(vendasValorPorProdutoDia[produto])}));
     const canaisBatch = canaisTocados.map(canal => ({canal, dados_json: JSON.stringify(canaisPorDia[canal])}));
-    Promise.all([
+    const [r1, r2, r3, r4, r5] = await Promise.all([
       apiPost('importBatch', importBatch), apiPost('importRevenueBatch', revenueBatch),
       apiPost('importVendasProdutoBatch', vendasProdutoBatch), apiPost('importVendasValorBatch', vendasValorBatch),
       apiPost('importCanaisBatch', canaisBatch)
-    ]).then(([r1, r2, r3, r4, r5]) => {
-      if(r1 && r1.ok && r2 && r2.ok && r3 && r3.ok && r4 && r4.ok && r5 && r5.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
-      else { syncStatus='erro'; showToast('Import salvo localmente, mas não sincronizou com o Sheets ainda'); }
-      renderSyncBadge();
-    });
+    ]);
+    if(r1 && r1.ok && r2 && r2.ok && r3 && r3.ok && r4 && r4.ok && r5 && r5.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
+    else { syncStatus='erro'; showToast('Import salvo localmente, mas não sincronizou com o Sheets ainda'); }
+    renderSyncBadge();
   }
 }
 
