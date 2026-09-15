@@ -1715,7 +1715,8 @@ function isExcludedName(n){
 // Contas internas que ficam de fora do ranking de afiliados (acima) mas têm sua própria visão de
 // vendas na lateral — "n" já chega normalizado (normName: minúsculo, sem acento, espaços colapsados).
 const CANAL_DEFS = [
-  {key:'helpgrid', label:'Helpgrid', match:n => n.includes('helpgrid')},
+  {key:'helpgrid', label:'Helpgrid', match:n => n.includes('helpgrid'),
+   nota:'Líquido aqui = nossa parte de verdade: 52% do Net Líquido (depois de COGS 10%, reembolso/chargeback, comissão e imposto). Os outros 48% ficam com a Helpgrid, não entram nesse número.'},
   {key:'welcome_salesbound', label:'Welcome · Sales Bound', match:n => n.replace(/\s+/g,'').includes('salesbound'),
    nota:'Líquido aqui = nossa parte de verdade: (Bruto − Reembolso − COGS 10%) × 55%. Os outros 45% ficam com a Sales Bound, não entram nesse número.'},
   {key:'welcome_isellforu', label:'Welcome · iSellForU', match:n => n.replace(/\s+/g,'').includes('isellforu')},
