@@ -399,7 +399,7 @@
 
 <div id="viewVendasDia" style="display:none">
   <h2 class="section-title"><span class="bar"></span>Vendas por dia</h2>
-  <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> (botão "Importar relatório BuyGoods") — não precisa importar de novo aqui, os dois usam o mesmo arquivo. Esta visão soma as vendas de <b>todos os afiliados</b> por produto, dia a dia. <span id="vendasDiaInfo"></span></div>
+  <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> (botão "Importar relatório BuyGoods") — não precisa importar de novo aqui, os dois usam o mesmo arquivo. Esta visão soma as vendas de <b>todos os afiliados</b> por produto, dia a dia — conta só o <b>pedido frontal</b> (upsell, downsell e frete não entram na contagem, só somam no bruto/líquido). <span id="vendasDiaInfo"></span></div>
   <div class="kpi-row" id="vendasDiaKpis"></div>
   <div class="period-tabs" id="vendasDiaTabs">
     <button class="active" data-periodo="dia">Por dia (últimos 14)</button>
@@ -416,7 +416,7 @@
 
 <div id="viewCanal" style="display:none">
   <h2 class="section-title"><span class="bar"></span><span id="canalTitulo"></span></h2>
-  <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia. <span id="canalInfo"></span></div>
+  <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia — conta só o <b>pedido frontal</b> (upsell, downsell e frete não entram na contagem, só somam no bruto/líquido). <span id="canalInfo"></span></div>
   <div id="canalNota" class="alert" style="display:none;"></div>
   <div id="canalLifetime" style="font-size:12px; margin:0 0 14px;"></div>
   <div class="kpi-row" id="canalKpis"></div>
@@ -1732,6 +1732,19 @@ function netOf_(v){
   if(!v) return null;
   return (v.gross||0) - (v.refund||0) - (v.chargeback||0) - (v.shipping||0) - (v.taxes||0);
 }
+// "Vendas por dia" (e as abas de canal) contam pedido frontal, não upsell/downsell/frete — o
+// relatório BuyGoods não tem uma coluna "FT" própria, mas o Product Codename segue um padrão
+// confiável: upsell tem "up1/up2/up3", downsell tem "dw1/dw2", frete é "ship"/"shi" sozinho — o
+// resto (mesmo sem a palavra "front" no nome) é o produto frontal em si.
+function isFrontal_(row, hidx){
+  if(!('Product Codename' in hidx)) return true; // relatório sem essa coluna — conta como antes
+  const code = String(row[hidx['Product Codename']] || '').trim().toLowerCase();
+  if(!code) return true;
+  if(/^shi/.test(code)) return false;
+  if(/up\d/.test(code)) return false;
+  if(/dw\d/.test(code)) return false;
+  return true;
+}
 function acumulaValor_(acc, actionType, row, hidx){
   if(actionType === 'neworder'){
     acc.gross += parseFloat(row[hidx['Gross']]) || 0;
@@ -2151,7 +2164,7 @@ async function processBuyGoodsImport(wb, filename){
       const actionType = row[hidx['Action Type']];
       const nkey = normName(nome);
 
-      if(actionType === 'neworder'){
+      if(actionType === 'neworder' && isFrontal_(row, hidx)){
         if(!porProdutoDia[produto]) porProdutoDia[produto] = {};
         porProdutoDia[produto][dayKey] = (porProdutoDia[produto][dayKey] || 0) + 1;
       }
@@ -2167,7 +2180,7 @@ async function processBuyGoodsImport(wb, filename){
       if(canalKey){
         if(!canaisDia[canalKey]) canaisDia[canalKey] = {};
         if(!canaisDia[canalKey][dayKey]) canaisDia[canalKey][dayKey] = {vendas:0, gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
-        if(actionType === 'neworder') canaisDia[canalKey][dayKey].vendas++;
+        if(actionType === 'neworder' && isFrontal_(row, hidx)) canaisDia[canalKey][dayKey].vendas++;
         acumulaValor_(canaisDia[canalKey][dayKey], actionType, row, hidx);
       }
 
