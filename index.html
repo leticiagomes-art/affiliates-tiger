@@ -417,6 +417,7 @@
 <div id="viewCanal" style="display:none">
   <h2 class="section-title"><span class="bar"></span><span id="canalTitulo"></span></h2>
   <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia. <span id="canalInfo"></span></div>
+  <div id="canalNota" class="alert" style="display:none;"></div>
   <div id="canalLifetime" style="font-size:12px; margin:0 0 14px;"></div>
   <div class="kpi-row" id="canalKpis"></div>
   <div class="period-tabs" id="canalTabs">
@@ -1715,7 +1716,8 @@ function isExcludedName(n){
 // vendas na lateral — "n" já chega normalizado (normName: minúsculo, sem acento, espaços colapsados).
 const CANAL_DEFS = [
   {key:'helpgrid', label:'Helpgrid', match:n => n.includes('helpgrid')},
-  {key:'welcome_salesbound', label:'Welcome · Sales Bound', match:n => n.replace(/\s+/g,'').includes('salesbound')},
+  {key:'welcome_salesbound', label:'Welcome · Sales Bound', match:n => n.replace(/\s+/g,'').includes('salesbound'),
+   nota:'Líquido aqui = nossa parte de verdade: (Bruto − Reembolso − COGS 10%) × 55%. Os outros 45% ficam com a Sales Bound, não entram nesse número.'},
   {key:'welcome_isellforu', label:'Welcome · iSellForU', match:n => n.replace(/\s+/g,'').includes('isellforu')},
   {key:'gestor5', label:'Email (Gestor 5)', match:n => n.includes('gestor') && n.includes('five')},
   {key:'gestor3', label:'SMS (Gestor 3)', match:n => n.includes('gestor') && n.includes('three')}
@@ -2592,6 +2594,11 @@ function renderCanal(){
   if(!canalAtivo) return;
   const def = CANAL_DEFS.find(c => c.key === canalAtivo);
   document.getElementById('canalTitulo').textContent = def ? def.label : '';
+  const notaEl = document.getElementById('canalNota');
+  if(notaEl){
+    if(def && def.nota){ notaEl.textContent = def.nota; notaEl.style.display = ''; }
+    else { notaEl.style.display = 'none'; }
+  }
   renderCanalKPIs_(canalAtivo);
   renderCanalTable_(canalAtivo);
   const info = document.getElementById('canalInfo');
