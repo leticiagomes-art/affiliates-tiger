@@ -493,6 +493,7 @@
   <div class="modal">
     <h3>Registrar contato</h3>
     <p class="sub" id="contactModalName"></p>
+    <div id="cHistorico" style="margin-bottom:12px;"></div>
     <label>Oferta / script usado</label>
     <select id="cOferta"></select>
     <label>Resumo da conversa</label>
@@ -507,7 +508,7 @@
     </select>
     <div class="modal-actions">
       <button class="btn-ghost" id="cCancel">Cancelar</button>
-      <button class="btn-orange" id="cSave">Salvar</button>
+      <button class="btn-orange" id="cSave">Adicionar registro</button>
     </div>
   </div>
 </div>
@@ -677,7 +678,7 @@ function saveLS(key, val){
 }
 
 let addedAffiliates = loadLS(LS_ADDED, []);
-let contactLog = loadLS(LS_CONTACTS, {});      // { nome_norm: {oferta, resumo, data} }
+let contactLog = loadLS(LS_CONTACTS, {});      // { nome_norm: [{oferta, resumo, data, atendente}, ...] } — histórico completo, mais recente por último a entrar
 let importUpdates = loadLS(LS_UPDATES, {});    // { nome_norm: {volume_ago, volume_set, ultima_venda, dias_sem_vender, tier, confirmado, produtos} }
 let affiliateMeta = loadLS(LS_META, {});       // { nome_norm: {nome_dash, trafego, cpa, buygoods_user} }
 let revenueDaily = loadLS(LS_REVENUE, {});     // { nome_norm: { 'YYYY-MM-DD': {vendas, faturamento, produtos} } }
@@ -712,7 +713,17 @@ function serverAddedToLocal(obj){
 
 function serverContactsToLocal(obj){
   const out = {};
-  Object.keys(obj).forEach(k => { out[k] = {oferta: obj[k].oferta, resumo: obj[k].resumo, data: obj[k].data, atendente: obj[k].atendente || ''}; });
+  Object.keys(obj).forEach(k => {
+    const r = obj[k];
+    if(r.historico_json){
+      try { out[k] = JSON.parse(r.historico_json); } catch(e){ out[k] = []; }
+    } else if(r.oferta || r.resumo || r.data){
+      // registro de antes desse histórico virar lista — entra como o primeiro item
+      out[k] = [{oferta: r.oferta||'', resumo: r.resumo||'', data: r.data||'', atendente: r.atendente||''}];
+    } else {
+      out[k] = [];
+    }
+  });
   return out;
 }
 
@@ -1096,12 +1107,36 @@ function trendCell(e){
   return `<div class="trend-cell">${line1}${line2}</div>`;
 }
 
+function ordenarContatos_(log){
+  // mais recente primeiro — por data da conversa, e criado_em como desempate quando duas entradas
+  // caem no mesmo dia (senão a ordem ficaria arbitrária entre elas)
+  return log.slice().sort((a,b) => {
+    const d = (b.data||'').localeCompare(a.data||'');
+    return d !== 0 ? d : (b.criado_em||'').localeCompare(a.criado_em||'');
+  });
+}
+function ultimoContato_(key){
+  const log = contactLog[key];
+  if(!log || !log.length) return null;
+  return ordenarContatos_(log)[0];
+}
 function contactLogCell(e){
   const key = normName(e.nome);
   const log = contactLog[key];
-  if(!log) return '<span class="row-sub">—</span>';
-  const atendenteTxt = log.atendente ? ` · ${escapeHtml(log.atendente)}` : '';
-  return `<div class="contact-log"><b>${escapeHtml(log.oferta)}</b> · ${escapeHtml(fmtDate_(log.data))}${atendenteTxt}<br>${escapeHtml(log.resumo||'')}</div>`;
+  if(!log || !log.length) return '<span class="row-sub">—</span>';
+  const ultimo = ultimoContato_(key);
+  const atendenteTxt = ultimo.atendente ? ` · ${escapeHtml(ultimo.atendente)}` : '';
+  const countTxt = log.length > 1 ? ` <span class="row-sub">(+${log.length-1} anterior${log.length-1===1?'':'es'})</span>` : '';
+  return `<div class="contact-log"><b>${escapeHtml(ultimo.oferta)}</b> · ${escapeHtml(fmtDate_(ultimo.data))}${atendenteTxt}${countTxt}<br>${escapeHtml(ultimo.resumo||'')}</div>`;
+}
+function historicoContatoHtml_(key){
+  const log = ordenarContatos_(contactLog[key] || []);
+  if(!log.length) return '<span class="row-sub">Nenhum contato registrado ainda — este será o primeiro.</span>';
+  const itens = log.map(c => {
+    const atendenteTxt = c.atendente ? ` · ${escapeHtml(c.atendente)}` : '';
+    return `<div class="contact-log" style="margin-bottom:6px;"><b>${escapeHtml(c.oferta)}</b> · ${escapeHtml(fmtDate_(c.data))}${atendenteTxt}<br>${escapeHtml(c.resumo||'')}</div>`;
+  }).join('');
+  return `<label>Histórico de contatos (${log.length})</label><div style="max-height:180px; overflow-y:auto; border:1px solid var(--line); border-radius:6px; padding:8px 10px;">${itens}</div>`;
 }
 
 const PAGE_SIZE = 40;
@@ -1402,7 +1437,7 @@ document.getElementById('copySheetsBtn').addEventListener('click', () => {
   const header = ['Nome','Confirmado (Orders_2026)','Produtos','Volume Historico','Volume Ago','Volume Set','Net Ago','Net Set','Ultima Venda','Dias Sem Vender','Tier','Telefone','Conf. Telefone','Telegram','Conf. Telegram','Status Planilha','Ultimo Contato Registrado'];
   const lines = [header.join('\t')];
   currentList.forEach(e => {
-    const log = contactLog[normName(e.nome)];
+    const log = ultimoContato_(normName(e.nome));
     const logTxt = log ? `${log.oferta} (${log.data}): ${log.resumo||''}` : '';
     lines.push([
       e.nome, e.confirmado?'sim':'nao', (e.produtos||[]).join('; '),
@@ -1497,11 +1532,12 @@ function openContactModal(entry){
   document.getElementById('contactModalName').textContent = 'Afiliado: ' + entry.nome;
   const sel = document.getElementById('cOferta');
   sel.innerHTML = OFFERS.map(o => `<option value="${o.nome}">${o.nome} (${o.linha})</option>`).join('') + '<option value="Outro">Outro / não listado</option>';
-  const existing = contactLog[normName(entry.nome)];
-  document.getElementById('cResumo').value = existing ? existing.resumo : '';
-  document.getElementById('cData').value = existing ? existing.data : new Date().toISOString().slice(0,10);
-  document.getElementById('cAtendente').value = existing ? (existing.atendente || '') : '';
-  if(existing) sel.value = existing.oferta;
+  document.getElementById('cHistorico').innerHTML = historicoContatoHtml_(normName(entry.nome));
+  // sempre um registro novo — o histórico acima mostra o que já foi registrado antes, sem apagar nada
+  document.getElementById('cResumo').value = '';
+  document.getElementById('cData').value = new Date().toISOString().slice(0,10);
+  document.getElementById('cAtendente').value = '';
+  sel.value = sel.options[0] ? sel.options[0].value : '';
   contactModalBg.classList.add('show');
 }
 document.getElementById('cCancel').addEventListener('click', () => contactModalBg.classList.remove('show'));
@@ -1512,12 +1548,13 @@ document.getElementById('cSave').addEventListener('click', async () => {
   const resumo = document.getElementById('cResumo').value.trim();
   const data = document.getElementById('cData').value || new Date().toISOString().slice(0,10);
   const atendente = document.getElementById('cAtendente').value;
-  contactLog[key] = {oferta, resumo, data, atendente};
+  if(!contactLog[key]) contactLog[key] = [];
+  contactLog[key].push({oferta, resumo, data, atendente, criado_em: new Date().toISOString()});
   saveLS(LS_CONTACTS, contactLog);
   contactModalBg.classList.remove('show');
   renderTable();
   showToast(APPS_SCRIPT_URL ? 'Registrado — sincronizando...' : 'Contato registrado (salvo neste navegador)');
-  const res = await apiPost('logContact', {nome: contactModalTarget.nome, oferta, resumo, data, atendente});
+  const res = await apiPost('logContact', {nome: contactModalTarget.nome, historico_json: JSON.stringify(contactLog[key])});
   if(res && res.ok){ syncStatus='ok'; showToast('Sincronizado com Google Sheets ✓'); }
   else if(APPS_SCRIPT_URL){ syncStatus='erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
   renderSyncBadge();
@@ -1539,7 +1576,7 @@ function openDetailModal(entry){
   const streakTxt = (entry.streak_diario||0) >= 2 ? ` · ${entry.streak_diario} dias seguidos vendendo` : '';
   document.getElementById('detailSub').textContent = `${produtos} — ${statusVenda}${streakTxt}`;
   document.getElementById('detailTrend').innerHTML = trendCell(entry);
-  document.getElementById('detailContactLog').innerHTML = '<label>Último contato registrado</label>' + contactLogCell(entry);
+  document.getElementById('detailContactLog').innerHTML = historicoContatoHtml_(normName(entry.nome));
   const life = entry.lifetime;
   document.getElementById('detailLifetime').innerHTML = life
     ? `<label>Histórico geral (desde jan/2025, base BuyGoods)</label><div class="row-sub">${life.orders} pedido${life.orders===1?'':'s'} · ${fmtMoney(life.gross)} bruto · ${fmtMoney(life.net)} líquido${life.refunds?' · '+fmtMoney(life.refunds)+' em reembolso/chargeback':''}</div>`
@@ -2481,6 +2518,7 @@ function renderCanalKPIs_(key){
   const semana = somaCanalPeriodo_(key, d => isoWeekMonday_(d)===semanaAtualMonday);
   const mesDiario = somaCanalPeriodo_(key, d => d.slice(0,7)===mesAtual);
   const bfMesAtual = (canalMensal[key]||{})[mesAtual];
+  const temDadoMesAtual = mesDiario.vendas > 0 || mesDiario.gross !== 0;
   const allDays = canalAllDays_(key);
   const ultimoDia = allDays.length ? allDays[allDays.length-1] : null;
   const semDadoOntem = ontem.vendas === 0 && ultimoDia && ultimoDia < ontemKey;
@@ -2496,9 +2534,9 @@ function renderCanalKPIs_(key){
     cardHtml(`Ontem (${diaLbl_(ontemKey)})`, ontem.vendas, ontem.gross, netOf_(ontem), semDadoOntem ? 'sem import ainda — último dado: '+diaLbl_(ultimoDia) : 'vendas (order items)') +
     cardHtml('Esta semana', semana.vendas, semana.gross, netOf_(semana), 'desde '+diaLbl_(semanaAtualMonday)) +
     cardHtml('Este mês',
-      mesDiario.vendas + (bfMesAtual ? bfMesAtual.orders||0 : 0),
-      mesDiario.gross + (bfMesAtual ? bfMesAtual.gross||0 : 0),
-      netOf_(mesDiario) + (bfMesAtual ? bfMesAtual.net||0 : 0),
+      temDadoMesAtual ? mesDiario.vendas : (bfMesAtual ? bfMesAtual.orders||0 : 0),
+      temDadoMesAtual ? mesDiario.gross : (bfMesAtual ? bfMesAtual.gross||0 : 0),
+      temDadoMesAtual ? netOf_(mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
       mesLblCurto_(mesAtual));
 }
 function renderCanalTable_(key){
@@ -2532,13 +2570,14 @@ function renderCanalTable_(key){
   // "Por mês" combina o que vier de import diário real (BuyGoods) com o backfill do Master
   // Affiliates separado por mês (canalMensal) — os dois somam sem duplicar porque cobrem períodos
   // diferentes na prática (backfill cobre meses já fechados, diário cobre dias novos daqui pra frente)
+  // se já tem dado diário real pra esse mês, ele manda sozinho (mais preciso) — o backfill mensal
+  // só entra pra completar um mês que ainda não tem NENHUM dado diário, pra não contar duas vezes
   const valoresPorCol = colKeys.map(c => {
     const diaria = somaCanalPeriodo_(key, d => agrupador(d)===c);
-    const net = netOf_(diaria);
+    const temDadoDiario = diaria.vendas > 0 || diaria.gross !== 0;
     const bf = canalPeriodo === 'mes' ? mensalDoCanal[c] : null;
-    return bf
-      ? {vendas: diaria.vendas + (bf.orders||0), gross: diaria.gross + (bf.gross||0), net: net + (bf.net||0)}
-      : {vendas: diaria.vendas, gross: diaria.gross, net};
+    if(bf && !temDadoDiario) return {vendas: bf.orders||0, gross: bf.gross||0, net: bf.net||0};
+    return {vendas: diaria.vendas, gross: diaria.gross, net: netOf_(diaria)};
   });
 
   head.innerHTML = '<th style="width:20%">Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';

@@ -15,7 +15,9 @@
  *
  * ABAS CRIADAS:
  * - AddedAffiliates: afiliados inseridos manualmente pela ferramenta
- * - ContactLog: registro de "último contato" (oferta, resumo, data) por afiliado
+ * - ContactLog: histórico completo de contatos (oferta, resumo, data, atendente) por afiliado — 1 linha
+ *   por afiliado com a lista inteira num JSON na coluna historico_json (cada "Registrar contato" novo
+ *   soma ao histórico, nunca substitui o que já tinha)
  * - ImportUpdates: última leitura de cada import diário, por afiliado (upsert)
  * - AffiliateMeta: nome no dash da empresa, tipo de tráfego, CPA, usuário/e-mail BuyGoods, e overrides
  *   de telefone/telegram (preenche ou corrige contato de qualquer afiliado, mesmo os que vêm da base
@@ -64,7 +66,7 @@ function setup() {
   }
   if (!ss.getSheetByName(SHEET_CONTACT)) {
     const sh = ss.insertSheet(SHEET_CONTACT);
-    sh.appendRow(['nome_norm', 'nome', 'oferta', 'resumo', 'data', 'atendente', 'atualizado_em']);
+    sh.appendRow(['nome_norm', 'nome', 'historico_json', 'atualizado_em']);
   }
   if (!ss.getSheetByName(SHEET_IMPORT)) {
     const sh = ss.insertSheet(SHEET_IMPORT);
@@ -224,11 +226,15 @@ function mergeAffiliateKey_(fromKey, toKey) {
 
   const contacts = sheetToObjects_(SHEET_CONTACT);
   if (contacts[fromKey]) {
-    const f = contacts[fromKey], t = contacts[toKey];
-    const maisRecente = (!t || String(f.data || '') > String(t.data || '')) ? f : t;
+    const f = contacts[fromKey], t = contacts[toKey] || {};
+    const parseHist = (r) => {
+      if (r.historico_json) { try { return JSON.parse(r.historico_json); } catch (e) { return []; } }
+      if (r.oferta || r.resumo || r.data) return [{ oferta: r.oferta || '', resumo: r.resumo || '', data: r.data || '', atendente: r.atendente || '' }];
+      return [];
+    };
+    const historico = parseHist(t).concat(parseHist(f));
     upsertRow_(SHEET_CONTACT, 'nome_norm', toKey, {
-      nome_norm: toKey, nome: maisRecente.nome, oferta: maisRecente.oferta || '',
-      resumo: maisRecente.resumo || '', data: maisRecente.data || '', atualizado_em: now
+      nome_norm: toKey, nome: t.nome || f.nome, historico_json: JSON.stringify(historico), atualizado_em: now
     });
     deleteRow_(SHEET_CONTACT, 'nome_norm', fromKey);
   }
@@ -396,11 +402,13 @@ function doPost(e) {
         telefone: d.telefone || '', telegram: d.telegram || '', atendente: d.atendente || '', atualizado_em: now
       });
     } else if (action === 'logContact') {
+      // body.data = {nome, historico_json} — historico_json já vem com a lista inteira (o cliente
+      // acumula/mantém o que já existia antes de adicionar o novo registro), então isso é sempre
+      // uma substituição segura da coluna inteira, nunca perde histórico
       const d = body.data;
       const key = normName_(d.nome);
       upsertRow_(SHEET_CONTACT, 'nome_norm', key, {
-        nome_norm: key, nome: d.nome, oferta: d.oferta || '', resumo: d.resumo || '',
-        data: d.data || '', atendente: d.atendente || '', atualizado_em: now
+        nome_norm: key, nome: d.nome, historico_json: d.historico_json || '[]', atualizado_em: now
       });
     } else if (action === 'importBatch') {
       // body.data = array de registros de import (um por afiliado)
