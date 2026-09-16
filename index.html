@@ -2129,7 +2129,7 @@ function recalcTierFromLastSale_(ultimaVendaStr){
 // relatório diário (1 dia) quanto pra uma exportação com meses/ano inteiro de uma vez.
 async function processBuyGoodsImport(wb, filename){
   const byAff = {}; // nome_norm -> {nome, produtos:Set, daily:{dayKey:{vendas,faturamento}}}
-  const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS os afiliados (inclusive internos), pra bater com o total real da operação
+  const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS os afiliados (inclusive internos e vendas sem afiliado/diretas), pra bater com o total real da operação
   const valorProdutoDia = {}; // produto -> {dayKey: {gross,refund,chargeback,shipping,taxes}} — mesma base do porProdutoDia
   const canaisDia = {}; // canalKey -> {dayKey: {vendas,gross,refund,chargeback,shipping,taxes}} — Helpgrid, Welcome, Gestores
   let sheetsLidas = 0;
@@ -2148,8 +2148,9 @@ async function processBuyGoodsImport(wb, filename){
     for(let i=1; i<rows.length; i++){
       const row = rows[i];
       if(!row) continue;
+      // pode vir sem afiliado (venda direta/orgânica) — ainda assim é uma venda real da operação,
+      // então só sai do loop mais abaixo, depois de contar no total por produto/dia e nos canais
       const nome = row[hidx['Affiliate Name']];
-      if(!nome) continue;
 
       const canceledRaw = row[hidx['Was Canceled']];
       if(canceledRaw == 1 || canceledRaw === '1' || canceledRaw === true) continue;
@@ -2184,7 +2185,7 @@ async function processBuyGoodsImport(wb, filename){
         acumulaValor_(canaisDia[canalKey][dayKey], actionType, row, hidx);
       }
 
-      if(!nkey || isExcludedName(nkey)) continue;
+      if(!nome || !nkey || isExcludedName(nkey)) continue; // daqui pra baixo é só o ranking por afiliado — precisa de nome
 
       if(!byAff[nkey]) byAff[nkey] = {nome, produtos:new Set(), daily:{}};
       const rec = byAff[nkey];
