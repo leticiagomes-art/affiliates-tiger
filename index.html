@@ -418,6 +418,14 @@
   <h2 class="section-title"><span class="bar"></span><span id="canalTitulo"></span></h2>
   <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia — conta só o <b>pedido frontal</b> (upsell, downsell e frete não entram na contagem, só somam no bruto/líquido). <span id="canalInfo"></span></div>
   <div id="canalNota" class="alert" style="display:none;"></div>
+  <div id="canalSalesboundImport" style="display:none; margin:0 0 16px;">
+    <span class="file-input-btn btn-orange" style="padding:9px 16px; border-radius:999px; font-weight:700; font-size:12.5px; color:#fff;">
+      📥 Importar planilha Salesbound
+      <input type="file" id="salesboundImportFile" accept=".xlsx">
+    </span>
+    <div class="row-sub" style="margin-top:6px;">Sobe o arquivo "Salesbound Financial Performance" (aba 📊 Dashboard) — pode subir toda segunda, atualiza os meses automaticamente.</div>
+  </div>
+  <div id="canalSalesboundChart" style="display:none; margin:0 0 18px;"></div>
   <div id="canalLifetime" style="font-size:12px; margin:0 0 14px;"></div>
   <div class="kpi-row" id="canalKpis"></div>
   <div class="period-tabs" id="canalTabs">
@@ -2087,6 +2095,166 @@ async function processCanalMensalImport(wb, filename){
   }
 }
 
+const MES_ABBR_ = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+
+// Import de autoatendimento pro dashboard "Salesbound Financial Performance" (aba 📊 Dashboard) — ela
+// mesma sobe esse arquivo toda semana (segunda), sem precisar rodar nada por fora. Formato próprio,
+// diferente do Master Affiliates: 1 linha por mês já pronta (Gross/Refunds/COGS/Net Líquido/Tiger 55%/
+// SB 45%), então não precisa filtrar por afiliado — a aba 📋 Detalhamento só entra pra somar "Closed"
+// (pedidos fechados) por mês, já que a aba Dashboard não traz contagem de pedido.
+// Acha em que coluna um cabeçalho começa, procurando duas células adjacentes conhecidas — evita
+// depender de índice fixo, porque o SheetJS (navegador) e o openpyxl (script de conferência) discordam
+// se a planilha tem ou não uma coluna A "fantasma" antes do conteúdo de verdade
+function acharColuna_(rows, colA, colB){
+  for(let i=0; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+    const idx = row.findIndex(c => c === colA);
+    if(idx !== -1 && row[idx+1] === colB) return {linha: i, coluna: idx};
+  }
+  return null;
+}
+async function processSalesboundImport(wb, filename){
+  const dashName = wb.SheetNames.find(n => /dashboard/i.test(n)) || wb.SheetNames[0];
+  const detName = wb.SheetNames.find(n => /detalhamento/i.test(n));
+  const dash = wb.Sheets[dashName];
+  if(!dash){ alert('Não encontrei a aba "Dashboard" nesse arquivo — confira se é o Salesbound Financial Performance certo.'); return; }
+  const rows = XLSX.utils.sheet_to_json(dash, {header:1, raw:true, defval:null});
+
+  const tituloBruto = rows.slice(0,3).map(r => (r||[]).map(c=>c==null?'':String(c)).join(' ')).join(' ');
+  const anoMatch = tituloBruto.match(/(\d{4})/);
+  const ano = anoMatch ? anoMatch[1] : String(new Date().getFullYear());
+
+  const achado = acharColuna_(rows, 'Mês', 'Gross Sales');
+  if(!achado){ alert('Não encontrei o cabeçalho esperado (Mês, Gross Sales...) — confira se é o Salesbound Financial Performance certo.'); return; }
+  const {linha: hpos, coluna: c0} = achado; // c0 = coluna de "Mês"; Gross=c0+1, Refunds=c0+2, ..., Tiger(55%)=c0+7
+
+  const porMes = {};
+  for(let i=hpos+1; i<rows.length; i++){
+    const row = rows[i];
+    if(!row || !row[c0]) continue;
+    const label = String(row[c0]).trim();
+    const m = label.match(/^([A-Za-z]{3})/);
+    if(!m) break; // linha de nota/total — acabaram os meses
+    const mesNum = MES_ABBR_[m[1].toLowerCase()];
+    if(!mesNum) break;
+    const mesKey = `${ano}-${String(mesNum).padStart(2,'0')}`;
+    const gross = Number(row[c0+1])||0, refunds = Number(row[c0+2])||0, tiger55 = Number(row[c0+7])||0;
+    porMes[mesKey] = {gross: Math.round(gross*100)/100, refunds: Math.round(Math.abs(refunds)*100)/100, net: Math.round(tiger55*100)/100, taxes: 0, orders: 0};
+  }
+
+  if(detName && wb.Sheets[detName]){
+    const detRows = XLSX.utils.sheet_to_json(wb.Sheets[detName], {header:1, raw:true, defval:null});
+    const achadoDet = acharColuna_(detRows, 'Mês', 'Agente');
+    if(achadoDet){
+      const dc0 = achadoDet.coluna; // Mês=dc0, Agente=dc0+1, Calls=dc0+2, Closed=dc0+3
+      detRows.forEach(row => {
+        if(!row || !row[dc0] || !row[dc0+1]) return; // precisa de Mês E Agente preenchidos (pula cabeçalho de grupo "▶ MES")
+        const m = String(row[dc0]).trim().match(/^([A-Za-z]{3})/);
+        if(!m) return;
+        const mesNum = MES_ABBR_[m[1].toLowerCase()];
+        if(!mesNum) return;
+        const mesKey = `${ano}-${String(mesNum).padStart(2,'0')}`;
+        if(!porMes[mesKey]) return;
+        porMes[mesKey].orders += Number(row[dc0+3])||0; // coluna "Closed"
+      });
+    }
+  }
+
+  const keys = Object.keys(porMes);
+  if(!keys.length){ alert('Não encontrei nenhum mês nesse arquivo.'); return; }
+  if(!confirm(`Encontrei ${keys.length} mês(es) de Salesbound nesse arquivo (${keys.map(mesLblCurto_).join(', ')}). Isso atualiza esses meses (os outros ficam como estão). Confirmar?`)) return;
+
+  if(!canalMensal['welcome_salesbound']) canalMensal['welcome_salesbound'] = {};
+  keys.forEach(mesKey => { canalMensal['welcome_salesbound'][mesKey] = porMes[mesKey]; });
+  saveLS(LS_CANAL_MENSAL, canalMensal);
+  if(canalAtivo === 'welcome_salesbound') renderCanal();
+  showToast(`Salesbound atualizado: ${keys.map(mesLblCurto_).join(', ')}` + (APPS_SCRIPT_URL ? ' — sincronizando...' : ' (salvo neste navegador)'));
+
+  if(APPS_SCRIPT_URL){
+    const batch = keys.map(mesKey => Object.assign({canal:'welcome_salesbound', mes: mesKey.replace('-','_')}, porMes[mesKey]));
+    const res = await apiPost('importCanalMensalBatch', batch);
+    if(res && res.ok){ syncStatus='ok'; showToast(`Sincronizado: ${res.processed} mês(es) no Google Sheets ✓`); }
+    else { syncStatus='erro'; showToast('Salvo localmente, mas não sincronizou com o Sheets ainda'); }
+    renderSyncBadge();
+  }
+}
+document.getElementById('salesboundImportFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
+      processSalesboundImport(wb, file.name);
+    } catch(err){
+      console.error(err);
+      alert('Não consegui ler esse arquivo. Confira se é o Salesbound Financial Performance (.xlsx) certo.');
+    }
+  };
+  reader.readAsBinaryString(file);
+  ev.target.value = '';
+});
+
+function fmtMoneyShort_(v){
+  if(Math.abs(v) >= 1000) return '$' + Math.round(v/1000) + 'k';
+  return fmtMoney(v);
+}
+function renderSalesboundChart_(){
+  const el = document.getElementById('canalSalesboundChart');
+  if(!el) return;
+  const meses = canalMensal['welcome_salesbound'] || {};
+  const mesKeys = Object.keys(meses).sort();
+  if(!mesKeys.length){
+    el.innerHTML = '<div class="chart-empty">Sem histórico mensal ainda — importe a planilha Salesbound acima pra ver a evolução mês a mês.</div>';
+    return;
+  }
+  const totals = mesKeys.reduce((acc,m) => {
+    const v = meses[m];
+    acc.orders += v.orders||0; acc.gross += v.gross||0; acc.net += v.net||0; acc.refunds += v.refunds||0;
+    return acc;
+  }, {orders:0, gross:0, net:0, refunds:0});
+  const margem = totals.gross ? (totals.net/totals.gross*100) : 0;
+
+  const max = Math.max(...mesKeys.map(m => meses[m].gross||0), 1);
+  const W = 640, H = 220, padL = 44, padB = 26, padT = 10, padR = 10;
+  const chartW = W - padL - padR, chartH = H - padT - padB;
+  const groupW = chartW / mesKeys.length;
+  const barW = Math.min(26, groupW*0.32);
+
+  const gridLines = [0.25,0.5,0.75,1].map(f => {
+    const y = padT + chartH*(1-f);
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2,3"/>
+      <text x="${padL-6}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${escapeHtml(fmtMoneyShort_(max*f))}</text>`;
+  }).join('');
+
+  const bars = mesKeys.map((m,i) => {
+    const v = meses[m];
+    const gx = padL + i*groupW + groupW/2;
+    const grossH = Math.max((v.gross||0)/max*chartH, v.gross ? 1 : 0);
+    const netH = Math.max((v.net||0)/max*chartH, v.net ? 1 : 0);
+    const grossY = padT + chartH - grossH;
+    const netY = padT + chartH - netH;
+    const label = mesLblCurto_(m);
+    return `
+      <rect x="${(gx-barW-2).toFixed(1)}" y="${grossY.toFixed(1)}" width="${barW.toFixed(1)}" height="${grossH.toFixed(1)}" fill="var(--line)" rx="2"><title>${escapeHtml(label)}: ${escapeHtml(fmtMoney(v.gross||0))} bruto</title></rect>
+      <rect x="${(gx+2).toFixed(1)}" y="${netY.toFixed(1)}" width="${barW.toFixed(1)}" height="${netH.toFixed(1)}" fill="var(--orange)" rx="2"><title>${escapeHtml(label)}: ${escapeHtml(fmtMoney(v.net||0))} líquido (55% nosso)</title></rect>
+      <text x="${gx.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${escapeHtml(label)}</text>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="kpi-row" style="margin-bottom:14px;">
+      <div class="mini-kpi"><div class="lab">Bruto no período</div><div class="val">${fmtMoney(totals.gross)}</div><div class="note">${mesKeys.length} mês${mesKeys.length===1?'':'es'} (${mesLblCurto_(mesKeys[0])} a ${mesLblCurto_(mesKeys[mesKeys.length-1])})</div></div>
+      <div class="mini-kpi"><div class="lab">Líquido nosso (55%)</div><div class="val">${fmtMoney(totals.net)}</div><div class="note">margem ${margem.toFixed(1)}%</div></div>
+      <div class="mini-kpi"><div class="lab">Pedidos fechados</div><div class="val">${totals.orders}</div><div class="note">soma de "Closed" no período</div></div>
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%; max-width:640px; height:auto; display:block;">${gridLines}${bars}</svg>
+    <div style="display:flex; gap:16px; margin-top:6px; font-size:11px; color:var(--muted);">
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--line);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Bruto</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Líquido (55% nosso)</span>
+    </div>`;
+}
+
 function streakDiario_(daily, lastSale){
   if(!lastSale) return 0;
   let streak = 0;
@@ -2614,6 +2782,12 @@ function renderCanal(){
     if(def && def.nota){ notaEl.textContent = def.nota; notaEl.style.display = ''; }
     else { notaEl.style.display = 'none'; }
   }
+  const ehSalesbound = canalAtivo === 'welcome_salesbound';
+  const importEl = document.getElementById('canalSalesboundImport');
+  const chartEl = document.getElementById('canalSalesboundChart');
+  if(importEl) importEl.style.display = ehSalesbound ? '' : 'none';
+  if(chartEl) chartEl.style.display = ehSalesbound ? '' : 'none';
+  if(ehSalesbound) renderSalesboundChart_();
   renderCanalKPIs_(canalAtivo);
   renderCanalTable_(canalAtivo);
   const info = document.getElementById('canalInfo');
