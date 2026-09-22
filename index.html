@@ -337,8 +337,7 @@
       <option value="sem_venda_2026">Sem venda confirmada em 2026</option>
     </select>
     <select id="contactFilter">
-      <option value="">Com ou sem contato</option>
-      <option value="com">Só com contato</option>
+      <option value="">Só com contato</option>
       <option value="sem">Só sem contato</option>
     </select>
     <select id="ontemFilter">
@@ -971,9 +970,12 @@ function tierColor_(tier){ return TIER_COLORS_[tier] || 'transparent'; }
 
 function updateNavCounts(){
   const counts = {novo:0, ativo:0, atencao:0, critico:0, sumido:0, sem_venda_2026:0};
-  DATA.forEach(e => { if(counts[e.tier]!==undefined) counts[e.tier]++; });
+  // as abas de urgência agora só contam quem tem contato (telefone/telegram) — os sem contato
+  // ficam de fora, só aparecem na aba "Sem contato na base"
+  const comContato = DATA.filter(e => e.telefone || e.telegram);
+  comContato.forEach(e => { if(counts[e.tier]!==undefined) counts[e.tier]++; });
   const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
-  set('countTodos', DATA.length);
+  set('countTodos', comContato.length);
   set('countNovo', counts.novo);
   set('countAtivo', counts.ativo);
   set('countAtencao', counts.atencao);
@@ -1196,7 +1198,9 @@ function applyFilters(){
       if(!hay.includes(q)) return false;
     }
     if(tier && e.tier !== tier) return false;
-    if(contact === 'com' && !(e.telefone || e.telegram)) return false;
+    // sem contato (telefone/telegram) fica escondido de toda visão por urgência por padrão — só
+    // aparece explicitamente pedindo "Só sem contato" (dropdown ou a aba "Sem contato na base")
+    if(contact !== 'sem' && !(e.telefone || e.telegram)) return false;
     if(contact === 'sem' && (e.telefone || e.telegram)) return false;
     if(ontemF === 'sim' && !vendeuNoPeriodo_(e,1,1)) return false;
     if(ontemF === 'nao' && vendeuNoPeriodo_(e,1,1)) return false;
