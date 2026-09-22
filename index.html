@@ -416,7 +416,7 @@
 
 <div id="viewCanal" style="display:none">
   <h2 class="section-title"><span class="bar"></span><span id="canalTitulo"></span></h2>
-  <div class="alert blue">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia — conta só o <b>pedido frontal</b> (upsell, downsell e frete não entram na contagem, só somam no bruto/líquido). <span id="canalInfo"></span></div>
+  <div class="alert blue" id="canalInfoBanner">Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia — conta só o <b>pedido frontal</b> (upsell, downsell e frete não entram na contagem, só somam no bruto/líquido). <span id="canalInfo"></span></div>
   <div id="canalNota" class="alert" style="display:none;"></div>
   <div id="canalSalesboundImport" style="display:none; margin:0 0 16px;">
     <span class="file-input-btn btn-orange" style="padding:9px 16px; border-radius:999px; font-weight:700; font-size:12.5px; color:#fff;">
@@ -1740,6 +1740,14 @@ function netOf_(v){
   if(!v) return null;
   return (v.gross||0) - (v.refund||0) - (v.chargeback||0) - (v.shipping||0) - (v.taxes||0);
 }
+// Sales Bound (CRM próprio, sem chargeback/shipping/taxes nesse nível) usa uma fórmula diferente
+// da genérica acima: COGS de 10% sobre o bruto, e só 55% do que sobra é nosso — mesma conta da
+// planilha mensal "Financial Performance" (Net Líquido = (Bruto − Reembolso) − COGS 10%; Tiger = 55%)
+function netCanal_(key, v){
+  if(!v) return null;
+  if(key === 'welcome_salesbound') return 0.55 * (0.9*(v.gross||0) - (v.refund||0));
+  return netOf_(v);
+}
 // "Vendas por dia" (e as abas de canal) contam pedido frontal, não upsell/downsell/frete — o
 // relatório BuyGoods não tem uma coluna "FT" própria, mas o Product Codename segue um padrão
 // confiável: upsell tem "up1/up2/up3", downsell tem "dw1/dw2", frete é "ship"/"shi" sozinho — o
@@ -2708,7 +2716,16 @@ function renderCanalKPIs_(key){
   const ultimoDia = allDays.length ? allDays[allDays.length-1] : null;
   const semDadoOntem = ontem.vendas === 0 && ultimoDia && ultimoDia < ontemKey;
 
-  const cardHtml = (lab, vendas, gross, net, note) => `
+  // Sales Bound não tem contagem de pedido por dia (CRM próprio, sem Product Codename) — o card
+  // mostra o bruto como número principal em vez de "0 vendas", que ficaria enganoso
+  const ehSalesbound = key === 'welcome_salesbound';
+  const cardHtml = (lab, vendas, gross, net, note) => ehSalesbound ? `
+    <div class="mini-kpi">
+      <div class="lab">${lab}</div>
+      <div class="val">${fmtMoney(gross)}</div>
+      <div class="note">${note}</div>
+      <div class="note">${fmtMoney(net)} líquido nosso (55%)</div>
+    </div>` : `
     <div class="mini-kpi">
       <div class="lab">${lab}</div>
       <div class="val">${vendas}</div>
@@ -2716,12 +2733,12 @@ function renderCanalKPIs_(key){
       <div class="note">${fmtMoney(gross)} bruto · ${fmtMoney(net)} líquido</div>
     </div>`;
   el.innerHTML =
-    cardHtml(`Ontem (${diaLbl_(ontemKey)})`, ontem.vendas, ontem.gross, netOf_(ontem), semDadoOntem ? 'sem import ainda — último dado: '+diaLbl_(ultimoDia) : 'vendas (order items)') +
-    cardHtml('Esta semana', semana.vendas, semana.gross, netOf_(semana), 'desde '+diaLbl_(semanaAtualMonday)) +
+    cardHtml(`Ontem (${diaLbl_(ontemKey)})`, ontem.vendas, ontem.gross, netCanal_(key, ontem), semDadoOntem ? 'sem dado ainda — último dado: '+diaLbl_(ultimoDia) : (ehSalesbound ? 'bruto do dia (CRM)' : 'vendas (order items)')) +
+    cardHtml('Esta semana', semana.vendas, semana.gross, netCanal_(key, semana), 'desde '+diaLbl_(semanaAtualMonday)) +
     cardHtml('Este mês',
       temDadoMesAtual ? mesDiario.vendas : (bfMesAtual ? bfMesAtual.orders||0 : 0),
       temDadoMesAtual ? mesDiario.gross : (bfMesAtual ? bfMesAtual.gross||0 : 0),
-      temDadoMesAtual ? netOf_(mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
+      temDadoMesAtual ? netCanal_(key, mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
       mesLblCurto_(mesAtual));
 }
 function renderCanalTable_(key){
@@ -2762,7 +2779,7 @@ function renderCanalTable_(key){
     const temDadoDiario = diaria.vendas > 0 || diaria.gross !== 0;
     const bf = canalPeriodo === 'mes' ? mensalDoCanal[c] : null;
     if(bf && !temDadoDiario) return {vendas: bf.orders||0, gross: bf.gross||0, net: bf.net||0};
-    return {vendas: diaria.vendas, gross: diaria.gross, net: netOf_(diaria)};
+    return {vendas: diaria.vendas, gross: diaria.gross, net: netCanal_(key, diaria)};
   });
 
   head.innerHTML = '<th style="width:20%">Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';
@@ -2788,6 +2805,12 @@ function renderCanal(){
   if(importEl) importEl.style.display = ehSalesbound ? '' : 'none';
   if(chartEl) chartEl.style.display = ehSalesbound ? '' : 'none';
   if(ehSalesbound) renderSalesboundChart_();
+  const bannerEl = document.getElementById('canalInfoBanner');
+  if(bannerEl){
+    bannerEl.innerHTML = ehSalesbound
+      ? 'A Sales Bound tem CRM próprio (CheckoutChamp), separado do relatório BuyGoods — não dá pra puxar automático. O mensal vem da planilha "Financial Performance" (botão acima); o dia a dia é o que você for trazendo do dashboard deles. Não existe pedido frontal/upsell aqui, é venda fechada mesmo. <span id="canalInfo"></span>'
+      : 'Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia — conta só o <b>pedido frontal</b> (upsell, downsell e frete não entram na contagem, só somam no bruto/líquido). <span id="canalInfo"></span>';
+  }
   renderCanalKPIs_(canalAtivo);
   renderCanalTable_(canalAtivo);
   const info = document.getElementById('canalInfo');
