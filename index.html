@@ -267,6 +267,11 @@
       <span class="dot" style="background:#2F5597"></span>
       <span class="label">📈 Vendas por dia</span>
     </div>
+    <div class="nav-item" id="navSemContato">
+      <span class="dot" style="background:#B45309"></span>
+      <span class="label">🚫 Sem contato na base</span>
+      <span class="count" id="countSemContato">–</span>
+    </div>
     <div class="nav-item nav-item-canal" data-canal="helpgrid">
       <span class="dot" style="background:#7C3AED"></span>
       <span class="label">🛟 Helpgrid</span>
@@ -975,6 +980,7 @@ function updateNavCounts(){
   set('countCritico', counts.critico);
   set('countSumido', counts.sumido);
   set('countSemVenda', counts.sem_venda_2026);
+  set('countSemContato', DATA.filter(e => !(e.telefone || e.telegram)).length);
 }
 
 document.querySelectorAll('.nav-item[data-tier]').forEach(item => {
@@ -982,9 +988,21 @@ document.querySelectorAll('.nav-item[data-tier]').forEach(item => {
     document.querySelectorAll('.nav-item[data-tier]').forEach(i => i.classList.remove('active'));
     item.classList.add('active');
     document.getElementById('tierFilter').value = item.dataset.tier;
+    semContatoAtivo = false;
+    if(document.getElementById('contactFilter').value === 'sem') document.getElementById('contactFilter').value = '';
     showView_('afiliados');
     applyFilters();
   });
+});
+document.getElementById('navSemContato').addEventListener('click', () => {
+  document.getElementById('tierFilter').value = '';
+  document.getElementById('contactFilter').value = 'sem';
+  semContatoAtivo = true;
+  showView_('afiliados');
+  applyFilters();
+});
+document.getElementById('contactFilter').addEventListener('change', () => {
+  if(document.getElementById('contactFilter').value !== 'sem') semContatoAtivo = false;
 });
 
 function pickOffer(produtos){
@@ -1153,6 +1171,7 @@ let currentPage = 1;
 let selectedMonth = '';
 let DATA = buildData();
 let currentList = DATA.slice();
+let semContatoAtivo = false; // true quando a aba "Sem contato na base" está selecionada
 
 function vendeuNoPeriodo_(e, dias, offsetDias){
   const daily = (e.receita_diaria && Object.keys(e.receita_diaria).length) ? e.receita_diaria : (e.dados_diarios || {});
@@ -1201,7 +1220,8 @@ function applyFilters(){
   renderTable();
   renderStats(currentList);
   updateNavCounts();
-  document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.tier === tier));
+  document.querySelectorAll('.nav-item[data-tier]').forEach(i => i.classList.toggle('active', !semContatoAtivo && i.dataset.tier === tier));
+  document.getElementById('navSemContato').classList.toggle('active', semContatoAtivo);
   renderTopParadosCards();
   renderVendasDia();
 }
@@ -2682,7 +2702,8 @@ function showView_(which){ // 'afiliados' | 'vendasDia' | 'canal'
   document.getElementById('viewVendasDia').style.display = which === 'vendasDia' ? '' : 'none';
   document.getElementById('viewCanal').style.display = which === 'canal' ? '' : 'none';
   const tier = document.getElementById('tierFilter').value;
-  document.querySelectorAll('.nav-item[data-tier]').forEach(n => n.classList.toggle('active', which === 'afiliados' && n.dataset.tier === tier));
+  document.querySelectorAll('.nav-item[data-tier]').forEach(n => n.classList.toggle('active', which === 'afiliados' && !semContatoAtivo && n.dataset.tier === tier));
+  document.getElementById('navSemContato').classList.toggle('active', which === 'afiliados' && semContatoAtivo);
   document.getElementById('navVendasDia').classList.toggle('active', which === 'vendasDia');
   document.querySelectorAll('.nav-item-canal').forEach(n => n.classList.toggle('active', which === 'canal' && n.dataset.canal === canalAtivo));
 }
