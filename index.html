@@ -2530,6 +2530,11 @@ function mesLblCurto_(monthKey){
   const [y,m] = monthKey.split('-');
   return nomes[parseInt(m,10)-1] + '/' + y.slice(2);
 }
+function mesAnterior_(monthKey){
+  const [y,m] = monthKey.split('-').map(Number);
+  const d = new Date(y, m-2, 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
 function vendasDiaAllDays_(){
   const dias = new Set();
   Object.values(vendasPorProdutoDia).forEach(porDia => Object.keys(porDia).forEach(d => dias.add(d)));
@@ -2702,6 +2707,39 @@ function somaCanalPeriodo_(key, filtro){
 function renderCanalKPIs_(key){
   const el = document.getElementById('canalKpis');
   if(!el) return;
+  const ehSalesbound = key === 'welcome_salesbound';
+
+  if(ehSalesbound){
+    // Sales Bound é atualizada manualmente por semana/mês, não dia a dia — "ontem"/"esta semana"
+    // não fazem sentido aqui. Troca por uma visão de acumulado + mês atual + mês anterior.
+    const hojeKey = new Date().toISOString().slice(0,10);
+    const mesAtual = hojeKey.slice(0,7);
+    const mesAnterior = mesAnterior_(mesAtual);
+    const mensal = canalMensal[key] || {};
+    const acumulado = Object.keys(mensal).reduce((acc,m) => {
+      acc.gross += mensal[m].gross||0; acc.net += mensal[m].net||0; return acc;
+    }, {gross:0, net:0});
+    const mesDiario = somaCanalPeriodo_(key, d => d.slice(0,7)===mesAtual);
+    const temDadoMesAtual = mesDiario.gross !== 0;
+    const bfMesAtual = mensal[mesAtual];
+    const bfMesAnterior = mensal[mesAnterior];
+    const cardHtml = (lab, gross, net, note) => `
+      <div class="mini-kpi">
+        <div class="lab">${lab}</div>
+        <div class="val">${fmtMoney(gross)}</div>
+        <div class="note">${note}</div>
+        <div class="note">${fmtMoney(net)} líquido nosso (55%)</div>
+      </div>`;
+    el.innerHTML =
+      cardHtml('Acumulado', acumulado.gross, acumulado.net, Object.keys(mensal).length ? `${Object.keys(mensal).length} mês${Object.keys(mensal).length===1?'':'es'}` : 'sem dado ainda') +
+      cardHtml('Mês atual',
+        temDadoMesAtual ? mesDiario.gross : (bfMesAtual ? bfMesAtual.gross||0 : 0),
+        temDadoMesAtual ? netCanal_(key, mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
+        mesLblCurto_(mesAtual)) +
+      cardHtml('Mês anterior', bfMesAnterior ? bfMesAnterior.gross||0 : 0, bfMesAnterior ? bfMesAnterior.net||0 : 0, mesLblCurto_(mesAnterior));
+    return;
+  }
+
   const hojeKey = new Date().toISOString().slice(0,10);
   const ontemKey = new Date(Date.now()-86400000).toISOString().slice(0,10);
   const mesAtual = hojeKey.slice(0,7);
@@ -2716,16 +2754,7 @@ function renderCanalKPIs_(key){
   const ultimoDia = allDays.length ? allDays[allDays.length-1] : null;
   const semDadoOntem = ontem.vendas === 0 && ultimoDia && ultimoDia < ontemKey;
 
-  // Sales Bound não tem contagem de pedido por dia (CRM próprio, sem Product Codename) — o card
-  // mostra o bruto como número principal em vez de "0 vendas", que ficaria enganoso
-  const ehSalesbound = key === 'welcome_salesbound';
-  const cardHtml = (lab, vendas, gross, net, note) => ehSalesbound ? `
-    <div class="mini-kpi">
-      <div class="lab">${lab}</div>
-      <div class="val">${fmtMoney(gross)}</div>
-      <div class="note">${note}</div>
-      <div class="note">${fmtMoney(net)} líquido nosso (55%)</div>
-    </div>` : `
+  const cardHtml = (lab, vendas, gross, net, note) => `
     <div class="mini-kpi">
       <div class="lab">${lab}</div>
       <div class="val">${vendas}</div>
@@ -2733,24 +2762,27 @@ function renderCanalKPIs_(key){
       <div class="note">${fmtMoney(gross)} bruto · ${fmtMoney(net)} líquido</div>
     </div>`;
   el.innerHTML =
-    cardHtml(`Ontem (${diaLbl_(ontemKey)})`, ontem.vendas, ontem.gross, netCanal_(key, ontem), semDadoOntem ? 'sem dado ainda — último dado: '+diaLbl_(ultimoDia) : (ehSalesbound ? 'bruto do dia (CRM)' : 'vendas (order items)')) +
-    cardHtml('Esta semana', semana.vendas, semana.gross, netCanal_(key, semana), 'desde '+diaLbl_(semanaAtualMonday)) +
+    cardHtml(`Ontem (${diaLbl_(ontemKey)})`, ontem.vendas, ontem.gross, netOf_(ontem), semDadoOntem ? 'sem dado ainda — último dado: '+diaLbl_(ultimoDia) : 'vendas (order items)') +
+    cardHtml('Esta semana', semana.vendas, semana.gross, netOf_(semana), 'desde '+diaLbl_(semanaAtualMonday)) +
     cardHtml('Este mês',
       temDadoMesAtual ? mesDiario.vendas : (bfMesAtual ? bfMesAtual.orders||0 : 0),
       temDadoMesAtual ? mesDiario.gross : (bfMesAtual ? bfMesAtual.gross||0 : 0),
-      temDadoMesAtual ? netCanal_(key, mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
+      temDadoMesAtual ? netOf_(mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
       mesLblCurto_(mesAtual));
 }
 function renderCanalTable_(key){
   const head = document.getElementById('canalHead');
   const body = document.getElementById('canalBody');
   if(!head || !body) return;
+  const ehSalesbound = key === 'welcome_salesbound';
   const allDays = canalAllDays_(key);
   const mensalDoCanal = canalMensal[key] || {};
   const temMensal = Object.keys(mensalDoCanal).length > 0;
   if(!allDays.length && !temMensal){
-    head.innerHTML = '<th>Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';
-    body.innerHTML = '<tr><td colspan="4" class="row-sub">Sem venda registrada ainda pra essa conta — some assim que aparecer num relatório BuyGoods importado.</td></tr>';
+    head.innerHTML = ehSalesbound
+      ? '<th>Período</th><th class="r num">Bruto</th>'
+      : '<th>Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';
+    body.innerHTML = `<tr><td colspan="${ehSalesbound?2:4}" class="row-sub">Sem venda registrada ainda pra essa conta — some assim que aparecer num relatório BuyGoods importado.</td></tr>`;
     return;
   }
   let colKeys, colLabels, agrupador;
@@ -2782,6 +2814,13 @@ function renderCanalTable_(key){
     return {vendas: diaria.vendas, gross: diaria.gross, net: netCanal_(key, diaria)};
   });
 
+  if(ehSalesbound){
+    head.innerHTML = '<th style="width:30%">Período</th><th class="r num">Bruto</th>';
+    const rows = colLabels.map((lbl,i) => `<tr><td class="row-name">${escapeHtml(lbl)}</td><td class="r num">${fmtMoney(valoresPorCol[i].gross)}</td></tr>`).join('');
+    const total = valoresPorCol.reduce((acc,v) => acc + (v.gross||0), 0);
+    body.innerHTML = rows + `<tr style="background:var(--row-even); font-weight:700"><td>TOTAL</td><td class="r num">${fmtMoney(total)}</td></tr>`;
+    return;
+  }
   head.innerHTML = '<th style="width:20%">Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';
   const rows = colLabels.map((lbl,i) => {
     const v = valoresPorCol[i];
