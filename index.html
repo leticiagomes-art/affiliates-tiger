@@ -1776,6 +1776,12 @@ function netOf_(v){
 // da genérica acima: COGS de 10% sobre o bruto, e só 55% do que sobra é nosso — mesma conta da
 // planilha mensal "Financial Performance" (Net Líquido = (Bruto − Reembolso) − COGS 10%; Tiger = 55%)
 const MODO_MENSAL_ = ['gestor5','gestor3']; // canais sem dado diário confiável: painel só mensal, alimentado pelo Master Affiliates
+// Email/SMS: líquido = bruto − 10% COGS − 7% BuyGoods. Outros custos (comissão, reembolso etc.)
+// ficam de fora de propósito — ela subtrai à mão.
+function liqMensal_(key, v){
+  if(!v) return 0;
+  return MODO_MENSAL_.includes(key) ? (v.gross||0) * (1 - 0.10 - 0.07) : (v.net||0);
+}
 function netCanal_(key, v){
   if(!v) return null;
   if(key === 'welcome_salesbound') return 0.55 * (0.9*(v.gross||0) - (v.refund||0));
@@ -2259,7 +2265,7 @@ function fmtMoneyShort_(v){
 }
 function renderCanalChart_(key){
   const ehSB = key === 'welcome_salesbound';
-  const lblLiq = ehSB ? 'Líquido nosso (55%)' : 'Líquido (Net Sales)';
+  const lblLiq = ehSB ? 'Líquido nosso (55%)' : 'Líquido (−10% COGS −7% BuyGoods)';
   const el = document.getElementById('canalMensalChart');
   if(!el) return;
   const meses = canalMensal[key] || {};
@@ -2270,12 +2276,13 @@ function renderCanalChart_(key){
   }
   const totals = mesKeys.reduce((acc,m) => {
     const v = meses[m];
-    acc.orders += v.orders||0; acc.gross += v.gross||0; acc.net += v.net||0; acc.refunds += v.refunds||0;
+    acc.orders += v.orders||0; acc.gross += v.gross||0; acc.net += liqMensal_(key, v); acc.refunds += v.refunds||0;
     return acc;
   }, {orders:0, gross:0, net:0, refunds:0});
   const margem = totals.gross ? (totals.net/totals.gross*100) : 0;
 
   const max = Math.max(...mesKeys.map(m => meses[m].gross||0), 1);
+  const liq = m => liqMensal_(key, meses[m]);
   const W = 640, H = 220, padL = 44, padB = 26, padT = 10, padR = 10;
   const chartW = W - padL - padR, chartH = H - padT - padB;
   const groupW = chartW / mesKeys.length;
@@ -2291,13 +2298,13 @@ function renderCanalChart_(key){
     const v = meses[m];
     const gx = padL + i*groupW + groupW/2;
     const grossH = Math.max((v.gross||0)/max*chartH, v.gross ? 1 : 0);
-    const netH = Math.max((v.net||0)/max*chartH, v.net ? 1 : 0);
+    const netH = Math.max(liq(m)/max*chartH, liq(m) ? 1 : 0);
     const grossY = padT + chartH - grossH;
     const netY = padT + chartH - netH;
     const label = mesLblCurto_(m);
     return `
       <rect x="${(gx-barW-2).toFixed(1)}" y="${grossY.toFixed(1)}" width="${barW.toFixed(1)}" height="${grossH.toFixed(1)}" fill="var(--line)" rx="2"><title>${escapeHtml(label)}: ${escapeHtml(fmtMoney(v.gross||0))} bruto</title></rect>
-      <rect x="${(gx+2).toFixed(1)}" y="${netY.toFixed(1)}" width="${barW.toFixed(1)}" height="${netH.toFixed(1)}" fill="var(--orange)" rx="2"><title>${escapeHtml(label)}: ${escapeHtml(fmtMoney(v.net||0))} líquido (55% nosso)</title></rect>
+      <rect x="${(gx+2).toFixed(1)}" y="${netY.toFixed(1)}" width="${barW.toFixed(1)}" height="${netH.toFixed(1)}" fill="var(--orange)" rx="2"><title>${escapeHtml(label)}: ${escapeHtml(fmtMoney(liq(m)))} ${ehSB ? 'líquido (55% nosso)' : 'líquido (−10% COGS −7% BuyGoods)'}</title></rect>
       <text x="${gx.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${escapeHtml(label)}</text>`;
   }).join('');
 
@@ -2310,7 +2317,7 @@ function renderCanalChart_(key){
     <svg viewBox="0 0 ${W} ${H}" style="width:100%; max-width:640px; height:auto; display:block;">${gridLines}${bars}</svg>
     <div style="display:flex; gap:16px; margin-top:6px; font-size:11px; color:var(--muted);">
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--line);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Bruto</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>${escapeHtml(ehSB ? 'Líquido (55% nosso)' : 'Líquido (Net Sales)')}</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>${escapeHtml(ehSB ? 'Líquido (55% nosso)' : 'Líquido (−10% COGS −7% BuyGoods)')}</span>
     </div>`;
 }
 
@@ -2770,7 +2777,7 @@ function renderCanalKPIs_(key){
     const mesAnterior = mesAnterior_(mesAtual);
     const mensal = canalMensal[key] || {};
     const acumulado = Object.keys(mensal).reduce((acc,m) => {
-      acc.gross += mensal[m].gross||0; acc.net += mensal[m].net||0; return acc;
+      acc.gross += mensal[m].gross||0; acc.net += liqMensal_(key, mensal[m]); return acc;
     }, {gross:0, net:0});
     const mesDiario = somaCanalPeriodo_(key, d => d.slice(0,7)===mesAtual);
     const temDadoMesAtual = ehSalesbound && mesDiario.gross !== 0;
@@ -2781,15 +2788,15 @@ function renderCanalKPIs_(key){
         <div class="lab">${lab}</div>
         <div class="val">${fmtMoney(gross)}</div>
         <div class="note">${note}</div>
-        <div class="note">${fmtMoney(net)} ${ehSalesbound ? 'líquido nosso (55%)' : 'líquido (Net Sales)'}</div>
+        <div class="note">${fmtMoney(net)} ${ehSalesbound ? 'líquido nosso (55%)' : 'líquido (−17%)'}</div>
       </div>`;
     el.innerHTML =
       cardHtml('Acumulado', acumulado.gross, acumulado.net, Object.keys(mensal).length ? `${Object.keys(mensal).length} ${Object.keys(mensal).length===1?'mês':'meses'}` : 'sem dado ainda') +
       cardHtml('Mês atual',
         temDadoMesAtual ? mesDiario.gross : (bfMesAtual ? bfMesAtual.gross||0 : 0),
-        temDadoMesAtual ? netCanal_(key, mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
+        temDadoMesAtual ? netCanal_(key, mesDiario) : liqMensal_(key, bfMesAtual),
         mesLblCurto_(mesAtual)) +
-      cardHtml('Mês anterior', bfMesAnterior ? bfMesAnterior.gross||0 : 0, bfMesAnterior ? bfMesAnterior.net||0 : 0, mesLblCurto_(mesAnterior));
+      cardHtml('Mês anterior', bfMesAnterior ? bfMesAnterior.gross||0 : 0, liqMensal_(key, bfMesAnterior), mesLblCurto_(mesAnterior));
     return;
   }
 
