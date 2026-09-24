@@ -430,7 +430,14 @@
     </span>
     <div class="row-sub" style="margin-top:6px;">Sobe o arquivo "Salesbound Financial Performance" (aba 📊 Dashboard) — pode subir toda segunda, atualiza os meses automaticamente.</div>
   </div>
-  <div id="canalSalesboundChart" style="display:none; margin:0 0 18px;"></div>
+  <div id="canalMasterImport" style="display:none; margin:0 0 16px;">
+    <span class="file-input-btn btn-orange" style="padding:9px 16px; border-radius:999px; font-weight:700; font-size:12.5px; color:#fff;">
+      📥 Importar Master Affiliates
+      <input type="file" id="masterMensalImportFile" accept=".xls,.xlsx">
+    </span>
+    <div class="row-sub" style="margin-top:6px;">Exporta o Master Affiliates do mês (dia 1 até hoje) e sobe aqui — pode subir toda semana, o mês atual é substituído pelo total mais novo.</div>
+  </div>
+  <div id="canalMensalChart" style="display:none; margin:0 0 18px;"></div>
   <div id="canalLifetime" style="font-size:12px; margin:0 0 14px;"></div>
   <div class="kpi-row" id="canalKpis"></div>
   <div class="period-tabs" id="canalTabs">
@@ -1768,6 +1775,7 @@ function netOf_(v){
 // Sales Bound (CRM próprio, sem chargeback/shipping/taxes nesse nível) usa uma fórmula diferente
 // da genérica acima: COGS de 10% sobre o bruto, e só 55% do que sobra é nosso — mesma conta da
 // planilha mensal "Financial Performance" (Net Líquido = (Bruto − Reembolso) − COGS 10%; Tiger = 55%)
+const MODO_MENSAL_ = ['gestor5','gestor3']; // canais sem dado diário confiável: painel só mensal, alimentado pelo Master Affiliates
 function netCanal_(key, v){
   if(!v) return null;
   if(key === 'welcome_salesbound') return 0.55 * (0.9*(v.gross||0) - (v.refund||0));
@@ -2229,17 +2237,35 @@ document.getElementById('salesboundImportFile').addEventListener('change', (ev) 
   ev.target.value = '';
 });
 
+document.getElementById('masterMensalImportFile').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
+      processCanalMensalImport(wb, file.name);
+    } catch(err){
+      console.error(err);
+      alert('Não consegui ler esse arquivo. Confira se é o Master Affiliates (.xls) do mês.');
+    }
+  };
+  reader.readAsBinaryString(file);
+  ev.target.value = '';
+});
 function fmtMoneyShort_(v){
   if(Math.abs(v) >= 1000) return '$' + Math.round(v/1000) + 'k';
   return fmtMoney(v);
 }
-function renderSalesboundChart_(){
-  const el = document.getElementById('canalSalesboundChart');
+function renderCanalChart_(key){
+  const ehSB = key === 'welcome_salesbound';
+  const lblLiq = ehSB ? 'Líquido nosso (55%)' : 'Líquido (Net Sales)';
+  const el = document.getElementById('canalMensalChart');
   if(!el) return;
-  const meses = canalMensal['welcome_salesbound'] || {};
+  const meses = canalMensal[key] || {};
   const mesKeys = Object.keys(meses).sort();
   if(!mesKeys.length){
-    el.innerHTML = '<div class="chart-empty">Sem histórico mensal ainda — importe a planilha Salesbound acima pra ver a evolução mês a mês.</div>';
+    el.innerHTML = '<div class="chart-empty">Sem histórico mensal ainda — importe o arquivo acima pra ver a evolução mês a mês.</div>';
     return;
   }
   const totals = mesKeys.reduce((acc,m) => {
@@ -2277,14 +2303,14 @@ function renderSalesboundChart_(){
 
   el.innerHTML = `
     <div class="kpi-row" style="margin-bottom:14px;">
-      <div class="mini-kpi"><div class="lab">Bruto no período</div><div class="val">${fmtMoney(totals.gross)}</div><div class="note">${mesKeys.length} mês${mesKeys.length===1?'':'es'} (${mesLblCurto_(mesKeys[0])} a ${mesLblCurto_(mesKeys[mesKeys.length-1])})</div></div>
-      <div class="mini-kpi"><div class="lab">Líquido nosso (55%)</div><div class="val">${fmtMoney(totals.net)}</div><div class="note">margem ${margem.toFixed(1)}%</div></div>
-      <div class="mini-kpi"><div class="lab">Pedidos fechados</div><div class="val">${totals.orders}</div><div class="note">soma de "Closed" no período</div></div>
+      <div class="mini-kpi"><div class="lab">Bruto no período</div><div class="val">${fmtMoney(totals.gross)}</div><div class="note">${mesKeys.length} ${mesKeys.length===1?'mês':'meses'} (${mesLblCurto_(mesKeys[0])} a ${mesLblCurto_(mesKeys[mesKeys.length-1])})</div></div>
+      <div class="mini-kpi"><div class="lab">${lblLiq}</div><div class="val">${fmtMoney(totals.net)}</div><div class="note">margem ${margem.toFixed(1)}%</div></div>
+      <div class="mini-kpi"><div class="lab">${ehSB ? 'Pedidos fechados' : 'Pedidos'}</div><div class="val">${totals.orders}</div><div class="note">${ehSB ? 'soma de "Closed" no período' : 'soma dos meses no período'}</div></div>
     </div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%; max-width:640px; height:auto; display:block;">${gridLines}${bars}</svg>
     <div style="display:flex; gap:16px; margin-top:6px; font-size:11px; color:var(--muted);">
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--line);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Bruto</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Líquido (55% nosso)</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--orange);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>${escapeHtml(ehSB ? 'Líquido (55% nosso)' : 'Líquido (Net Sales)')}</span>
     </div>`;
 }
 
@@ -2734,8 +2760,9 @@ function renderCanalKPIs_(key){
   const el = document.getElementById('canalKpis');
   if(!el) return;
   const ehSalesbound = key === 'welcome_salesbound';
+  const ehMensal = ehSalesbound || MODO_MENSAL_.includes(key);
 
-  if(ehSalesbound){
+  if(ehMensal){
     // Sales Bound é atualizada manualmente por semana/mês, não dia a dia — "ontem"/"esta semana"
     // não fazem sentido aqui. Troca por uma visão de acumulado + mês atual + mês anterior.
     const hojeKey = new Date().toISOString().slice(0,10);
@@ -2746,7 +2773,7 @@ function renderCanalKPIs_(key){
       acc.gross += mensal[m].gross||0; acc.net += mensal[m].net||0; return acc;
     }, {gross:0, net:0});
     const mesDiario = somaCanalPeriodo_(key, d => d.slice(0,7)===mesAtual);
-    const temDadoMesAtual = mesDiario.gross !== 0;
+    const temDadoMesAtual = ehSalesbound && mesDiario.gross !== 0;
     const bfMesAtual = mensal[mesAtual];
     const bfMesAnterior = mensal[mesAnterior];
     const cardHtml = (lab, gross, net, note) => `
@@ -2754,10 +2781,10 @@ function renderCanalKPIs_(key){
         <div class="lab">${lab}</div>
         <div class="val">${fmtMoney(gross)}</div>
         <div class="note">${note}</div>
-        <div class="note">${fmtMoney(net)} líquido nosso (55%)</div>
+        <div class="note">${fmtMoney(net)} ${ehSalesbound ? 'líquido nosso (55%)' : 'líquido (Net Sales)'}</div>
       </div>`;
     el.innerHTML =
-      cardHtml('Acumulado', acumulado.gross, acumulado.net, Object.keys(mensal).length ? `${Object.keys(mensal).length} mês${Object.keys(mensal).length===1?'':'es'}` : 'sem dado ainda') +
+      cardHtml('Acumulado', acumulado.gross, acumulado.net, Object.keys(mensal).length ? `${Object.keys(mensal).length} ${Object.keys(mensal).length===1?'mês':'meses'}` : 'sem dado ainda') +
       cardHtml('Mês atual',
         temDadoMesAtual ? mesDiario.gross : (bfMesAtual ? bfMesAtual.gross||0 : 0),
         temDadoMesAtual ? netCanal_(key, mesDiario) : (bfMesAtual ? bfMesAtual.net||0 : 0),
@@ -2802,27 +2829,28 @@ function renderCanalTable_(key){
   const body = document.getElementById('canalBody');
   if(!head || !body) return;
   const ehSalesbound = key === 'welcome_salesbound';
-  const allDays = canalAllDays_(key);
+  const soMensal = MODO_MENSAL_.includes(key);
+  const allDays = soMensal ? [] : canalAllDays_(key);
   const mensalDoCanal = canalMensal[key] || {};
   const temMensal = Object.keys(mensalDoCanal).length > 0;
   if(!allDays.length && !temMensal){
-    head.innerHTML = ehSalesbound
+    head.innerHTML = (ehSalesbound || soMensal)
       ? '<th>Período</th><th class="r num">Bruto</th>'
       : '<th>Período</th><th class="r num">Vendas</th><th class="r num">Bruto</th><th class="r num">Líquido</th>';
-    body.innerHTML = `<tr><td colspan="${ehSalesbound?2:4}" class="row-sub">Sem venda registrada ainda pra essa conta — some assim que aparecer num relatório BuyGoods importado.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${(ehSalesbound||soMensal)?2:4}" class="row-sub">${soMensal ? 'Sem mês importado ainda — suba o Master Affiliates acima.' : 'Sem venda registrada ainda pra essa conta — some assim que aparecer num relatório BuyGoods importado.'}</td></tr>`;
     return;
   }
   let colKeys, colLabels, agrupador;
-  if(canalPeriodo === 'semana'){
-    colKeys = Array.from(new Set(allDays.map(isoWeekMonday_))).sort();
-    colLabels = colKeys.map(w => 'Sem '+diaLbl_(w));
-    agrupador = d => isoWeekMonday_(d);
-  } else if(canalPeriodo === 'mes'){
+  if(soMensal || canalPeriodo === 'mes'){
     const mesesComDado = new Set(allDays.map(d=>d.slice(0,7)));
     Object.keys(mensalDoCanal).forEach(m => mesesComDado.add(m));
     colKeys = Array.from(mesesComDado).sort();
     colLabels = colKeys.map(mesLblCurto_);
     agrupador = d => d.slice(0,7);
+  } else if(canalPeriodo === 'semana'){
+    colKeys = Array.from(new Set(allDays.map(isoWeekMonday_))).sort();
+    colLabels = colKeys.map(w => 'Sem '+diaLbl_(w));
+    agrupador = d => isoWeekMonday_(d);
   } else {
     colKeys = allDays.slice(-14);
     colLabels = colKeys.map(diaLbl_);
@@ -2835,13 +2863,13 @@ function renderCanalTable_(key){
   // só entra pra completar um mês que ainda não tem NENHUM dado diário, pra não contar duas vezes
   const valoresPorCol = colKeys.map(c => {
     const diaria = somaCanalPeriodo_(key, d => agrupador(d)===c);
-    const bf = canalPeriodo === 'mes' ? mensalDoCanal[c] : null;
+    const bf = (soMensal || canalPeriodo === 'mes') ? mensalDoCanal[c] : null;
     const temDadoDiario = (diaria.vendas > 0 || diaria.gross !== 0) && !(bf && (bf.gross||0) > diaria.gross);
     if(bf && !temDadoDiario) return {vendas: bf.orders||0, gross: bf.gross||0, net: bf.net||0};
     return {vendas: diaria.vendas, gross: diaria.gross, net: netCanal_(key, diaria)};
   });
 
-  if(ehSalesbound){
+  if(ehSalesbound || soMensal){
     head.innerHTML = '<th style="width:30%">Período</th><th class="r num">Bruto</th>';
     const rows = colLabels.map((lbl,i) => `<tr><td class="row-name">${escapeHtml(lbl)}</td><td class="r num">${fmtMoney(valoresPorCol[i].gross)}</td></tr>`).join('');
     const total = valoresPorCol.reduce((acc,v) => acc + (v.gross||0), 0);
@@ -2866,14 +2894,21 @@ function renderCanal(){
     else { notaEl.style.display = 'none'; }
   }
   const ehSalesbound = canalAtivo === 'welcome_salesbound';
+  const ehGestor = MODO_MENSAL_.includes(canalAtivo);
   const importEl = document.getElementById('canalSalesboundImport');
-  const chartEl = document.getElementById('canalSalesboundChart');
+  const masterEl = document.getElementById('canalMasterImport');
+  const chartEl = document.getElementById('canalMensalChart');
+  const tabsEl = document.getElementById('canalTabs');
   if(importEl) importEl.style.display = ehSalesbound ? '' : 'none';
-  if(chartEl) chartEl.style.display = ehSalesbound ? '' : 'none';
-  if(ehSalesbound) renderSalesboundChart_();
+  if(masterEl) masterEl.style.display = ehGestor ? '' : 'none';
+  if(chartEl) chartEl.style.display = (ehSalesbound || ehGestor) ? '' : 'none';
+  if(tabsEl) tabsEl.style.display = ehGestor ? 'none' : '';
+  if(ehSalesbound || ehGestor) renderCanalChart_(canalAtivo);
   const bannerEl = document.getElementById('canalInfoBanner');
   if(bannerEl){
-    bannerEl.innerHTML = ehSalesbound
+    bannerEl.innerHTML = ehGestor
+      ? 'Painel mensal, igual ao da Sales Bound: o número vem do export <b>Master Affiliates</b> (dia 1 do mês até hoje). Suba o arquivo ao longo da semana e o mês atual é atualizado. <span id="canalInfo"></span>'
+      : ehSalesbound
       ? 'A Sales Bound tem CRM próprio (CheckoutChamp), separado do relatório BuyGoods — não dá pra puxar automático. O mensal vem da planilha "Financial Performance" (botão acima); o dia a dia é o que você for trazendo do dashboard deles. Não existe pedido frontal/upsell aqui, é venda fechada mesmo. <span id="canalInfo"></span>'
       : 'Alimentada pelo mesmo relatório da BuyGoods que você já importa na aba <b>Geral</b> — não precisa importar de novo aqui. Esta visão soma as vendas atribuídas a essa conta interna, dia a dia — conta só o <b>pedido frontal</b> (upsell, downsell e frete não entram na contagem, só somam no bruto/líquido). <span id="canalInfo"></span>';
   }
@@ -2881,9 +2916,10 @@ function renderCanal(){
   renderCanalTable_(canalAtivo);
   const info = document.getElementById('canalInfo');
   if(info){
-    const dias = canalAllDays_(canalAtivo);
+    const dias = ehGestor ? [] : canalAllDays_(canalAtivo);
     const meses = Object.keys(canalMensal[canalAtivo] || {}).sort();
-    if(dias.length) info.textContent = `Dados diários de ${diaLbl_(dias[0])} a ${diaLbl_(dias[dias.length-1])}.`;
+    if(ehGestor) info.textContent = meses.length ? `Meses importados: ${mesLblCurto_(meses[0])} a ${mesLblCurto_(meses[meses.length-1])}.` : 'Nenhum mês importado ainda.';
+    else if(dias.length) info.textContent = `Dados diários de ${diaLbl_(dias[0])} a ${diaLbl_(dias[dias.length-1])}.`;
     else if(meses.length) info.textContent = `Sem import diário ainda — histórico mensal de ${mesLblCurto_(meses[0])} a ${mesLblCurto_(meses[meses.length-1])}.`;
     else info.textContent = 'Ainda sem venda registrada pra essa conta.';
   }
