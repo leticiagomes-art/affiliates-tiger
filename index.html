@@ -2308,12 +2308,13 @@ function renderCanalChart_(key){
       <text x="${gx.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${escapeHtml(label)}</text>`;
   }).join('');
 
+  const semResumo = key === 'gestor5';
   el.innerHTML = `
-    <div class="kpi-row" style="margin-bottom:14px;">
+    ${semResumo ? '' : `<div class="kpi-row" style="margin-bottom:14px;">
       <div class="mini-kpi"><div class="lab">Bruto no período</div><div class="val">${fmtMoney(totals.gross)}</div><div class="note">${mesKeys.length} ${mesKeys.length===1?'mês':'meses'} (${mesLblCurto_(mesKeys[0])} a ${mesLblCurto_(mesKeys[mesKeys.length-1])})</div></div>
       <div class="mini-kpi"><div class="lab">${lblLiq}</div><div class="val">${fmtMoney(totals.net)}</div><div class="note">margem ${margem.toFixed(1)}%</div></div>
       <div class="mini-kpi"><div class="lab">${ehSB ? 'Pedidos fechados' : 'Pedidos'}</div><div class="val">${totals.orders}</div><div class="note">${ehSB ? 'soma de "Closed" no período' : 'soma dos meses no período'}</div></div>
-    </div>
+    </div>`}
     <svg viewBox="0 0 ${W} ${H}" style="width:100%; max-width:640px; height:auto; display:block;">${gridLines}${bars}</svg>
     <div style="display:flex; gap:16px; margin-top:6px; font-size:11px; color:var(--muted);">
       <span><span style="display:inline-block;width:10px;height:10px;background:var(--line);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Bruto</span>
@@ -2777,26 +2778,28 @@ function renderCanalKPIs_(key){
     const mesAnterior = mesAnterior_(mesAtual);
     const mensal = canalMensal[key] || {};
     const acumulado = Object.keys(mensal).reduce((acc,m) => {
-      acc.gross += mensal[m].gross||0; acc.net += liqMensal_(key, mensal[m]); return acc;
-    }, {gross:0, net:0});
+      acc.gross += mensal[m].gross||0; acc.net += liqMensal_(key, mensal[m]); acc.orders += mensal[m].orders||0; return acc;
+    }, {gross:0, net:0, orders:0});
     const mesDiario = somaCanalPeriodo_(key, d => d.slice(0,7)===mesAtual);
     const temDadoMesAtual = ehSalesbound && mesDiario.gross !== 0;
     const bfMesAtual = mensal[mesAtual];
     const bfMesAnterior = mensal[mesAnterior];
-    const cardHtml = (lab, gross, net, note) => `
+    const mostraPedidos = key === 'gestor5';
+    const cardHtml = (lab, gross, net, note, pedidos) => `
       <div class="mini-kpi">
         <div class="lab">${lab}</div>
         <div class="val">${fmtMoney(gross)}</div>
+        ${mostraPedidos ? `<div class="note"><b>${pedidos||0}</b> pedidos</div>` : ''}
         <div class="note">${note}</div>
         <div class="note">${fmtMoney(net)} ${ehSalesbound ? 'líquido nosso (55%)' : 'líquido (−17%)'}</div>
       </div>`;
     el.innerHTML =
-      cardHtml('Acumulado', acumulado.gross, acumulado.net, Object.keys(mensal).length ? `${Object.keys(mensal).length} ${Object.keys(mensal).length===1?'mês':'meses'}` : 'sem dado ainda') +
+      cardHtml('Acumulado', acumulado.gross, acumulado.net, Object.keys(mensal).length ? `${Object.keys(mensal).length} ${Object.keys(mensal).length===1?'mês':'meses'}` : 'sem dado ainda', acumulado.orders) +
       cardHtml('Mês atual',
         temDadoMesAtual ? mesDiario.gross : (bfMesAtual ? bfMesAtual.gross||0 : 0),
         temDadoMesAtual ? netCanal_(key, mesDiario) : liqMensal_(key, bfMesAtual),
-        mesLblCurto_(mesAtual)) +
-      cardHtml('Mês anterior', bfMesAnterior ? bfMesAnterior.gross||0 : 0, liqMensal_(key, bfMesAnterior), mesLblCurto_(mesAnterior));
+        mesLblCurto_(mesAtual), temDadoMesAtual ? mesDiario.vendas : (bfMesAtual ? bfMesAtual.orders : 0)) +
+      cardHtml('Mês anterior', bfMesAnterior ? bfMesAnterior.gross||0 : 0, liqMensal_(key, bfMesAnterior), mesLblCurto_(mesAnterior), bfMesAnterior ? bfMesAnterior.orders : 0);
     return;
   }
 
