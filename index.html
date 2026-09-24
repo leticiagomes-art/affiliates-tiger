@@ -2308,7 +2308,7 @@ function renderCanalChart_(key){
       <text x="${gx.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${escapeHtml(label)}</text>`;
   }).join('');
 
-  const semResumo = key === 'gestor5';
+  const semResumo = MODO_MENSAL_.includes(key);
   el.innerHTML = `
     ${semResumo ? '' : `<div class="kpi-row" style="margin-bottom:14px;">
       <div class="mini-kpi"><div class="lab">Bruto no período</div><div class="val">${fmtMoney(totals.gross)}</div><div class="note">${mesKeys.length} ${mesKeys.length===1?'mês':'meses'} (${mesLblCurto_(mesKeys[0])} a ${mesLblCurto_(mesKeys[mesKeys.length-1])})</div></div>
@@ -2784,7 +2784,7 @@ function renderCanalKPIs_(key){
     const temDadoMesAtual = ehSalesbound && mesDiario.gross !== 0;
     const bfMesAtual = mensal[mesAtual];
     const bfMesAnterior = mensal[mesAnterior];
-    const mostraPedidos = key === 'gestor5';
+    const mostraPedidos = MODO_MENSAL_.includes(key);
     const cardHtml = (lab, gross, net, note, pedidos) => `
       <div class="mini-kpi">
         <div class="lab">${lab}</div>
