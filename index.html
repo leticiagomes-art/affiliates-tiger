@@ -2775,7 +2775,8 @@ function renderCanalKPIs_(key){
   const semana = somaCanalPeriodo_(key, d => isoWeekMonday_(d)===semanaAtualMonday);
   const mesDiario = somaCanalPeriodo_(key, d => d.slice(0,7)===mesAtual);
   const bfMesAtual = (canalMensal[key]||{})[mesAtual];
-  const temDadoMesAtual = mesDiario.vendas > 0 || mesDiario.gross !== 0;
+  // o Master Affiliates mensal é a fonte oficial: se o diário (que pode subcontar) ficou abaixo dele, vale o mensal
+  const temDadoMesAtual = (mesDiario.vendas > 0 || mesDiario.gross !== 0) && !(bfMesAtual && (bfMesAtual.gross||0) > mesDiario.gross);
   const allDays = canalAllDays_(key);
   const ultimoDia = allDays.length ? allDays[allDays.length-1] : null;
   const semDadoOntem = ontem.vendas === 0 && ultimoDia && ultimoDia < ontemKey;
@@ -2834,8 +2835,8 @@ function renderCanalTable_(key){
   // só entra pra completar um mês que ainda não tem NENHUM dado diário, pra não contar duas vezes
   const valoresPorCol = colKeys.map(c => {
     const diaria = somaCanalPeriodo_(key, d => agrupador(d)===c);
-    const temDadoDiario = diaria.vendas > 0 || diaria.gross !== 0;
     const bf = canalPeriodo === 'mes' ? mensalDoCanal[c] : null;
+    const temDadoDiario = (diaria.vendas > 0 || diaria.gross !== 0) && !(bf && (bf.gross||0) > diaria.gross);
     if(bf && !temDadoDiario) return {vendas: bf.orders||0, gross: bf.gross||0, net: bf.net||0};
     return {vendas: diaria.vendas, gross: diaria.gross, net: netCanal_(key, diaria)};
   });
