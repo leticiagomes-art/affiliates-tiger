@@ -56,6 +56,7 @@ const SHEET_VENDAS_VALOR = 'VendasValorProdutoDia';
 const SHEET_CANAIS = 'CanaisInternoDia';
 const SHEET_CANAL_LIFETIME = 'CanalLifetime';
 const SHEET_CANAL_MENSAL = 'CanalMensal';
+const SHEET_IMPORT_LOG = 'ImportLog'; // histórico de arquivos importados no painel de parceiros (1 linha por import)
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -362,6 +363,7 @@ function doGet(e) {
       canaisInterno: sheetToObjectsBy_(SHEET_CANAIS, 'canal'),
       canalLifetime: sheetToObjectsBy_(SHEET_CANAL_LIFETIME, 'canal'),
       canalMensal: sheetToObjectsBy_(SHEET_CANAL_MENSAL, 'id'),
+      importLog: sheetToObjectsBy_(SHEET_IMPORT_LOG, 'id'),
       ok: true
     };
   } else {
@@ -372,7 +374,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importVendasValorBatch' | 'importCanaisBatch' | 'importCanalLifetimeBatch' | 'importCanalMensalBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importVendasValorBatch' | 'importCanaisBatch' | 'importCanalLifetimeBatch' | 'importCanalMensalBatch' | 'logImport' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -381,7 +383,17 @@ function doPost(e) {
   let result = { ok: true };
 
   try {
-    if (action === 'addAffiliate') {
+    if (action === 'logImport') {
+      // body.data = {id, arquivo, tipo, parceiros, resumo} — registra um import feito no painel de
+      // parceiros; a aba é criada sozinha no primeiro registro (upsertRow_ cria aba e colunas)
+      const d = body.data || {};
+      if (d.id) {
+        upsertRow_(SHEET_IMPORT_LOG, 'id', d.id, {
+          id: d.id, quando: now, arquivo: d.arquivo || '', tipo: d.tipo || '',
+          parceiros: d.parceiros || '', resumo: d.resumo || ''
+        });
+      }
+    } else if (action === 'addAffiliate') {
       const d = body.data;
       const key = normName_(d.nome);
       upsertRow_(SHEET_ADDED, 'nome_norm', key, {
