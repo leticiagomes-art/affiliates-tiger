@@ -56,7 +56,8 @@ const SHEET_VENDAS_VALOR = 'VendasValorProdutoDia';
 const SHEET_CANAIS = 'CanaisInternoDia';
 const SHEET_CANAL_LIFETIME = 'CanalLifetime';
 const SHEET_CANAL_MENSAL = 'CanalMensal';
-const SHEET_IMPORT_LOG = 'ImportLog'; // histórico de arquivos importados no painel de parceiros (1 linha por import)
+const SHEET_IMPORT_LOG = 'ImportLog';
+const SHEET_PARCEIROS_DIA = 'ParceirosDia'; // vendas por dia de relatório, por parceiro/conta/produto — 1 linha por parceiro+mês (id = canal__AAAA_MM) // histórico de arquivos importados no painel de parceiros (1 linha por import)
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -364,6 +365,7 @@ function doGet(e) {
       canalLifetime: sheetToObjectsBy_(SHEET_CANAL_LIFETIME, 'canal'),
       canalMensal: sheetToObjectsBy_(SHEET_CANAL_MENSAL, 'id'),
       importLog: sheetToObjectsBy_(SHEET_IMPORT_LOG, 'id'),
+      parceirosDia: sheetToObjectsBy_(SHEET_PARCEIROS_DIA, 'id'),
       ok: true
     };
   } else {
@@ -374,7 +376,7 @@ function doGet(e) {
 }
 
 /**
- * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importVendasValorBatch' | 'importCanaisBatch' | 'importCanalLifetimeBatch' | 'importCanalMensalBatch' | 'logImport' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
+ * POST body JSON: { action: 'addAffiliate' | 'addAffiliatesBatch' | 'deleteAffiliate' | 'logContact' | 'importBatch' | 'saveAffiliateMeta' | 'importRevenueBatch' | 'importVendasProdutoBatch' | 'importVendasValorBatch' | 'importCanaisBatch' | 'importCanalLifetimeBatch' | 'importCanalMensalBatch' | 'logImport' | 'importParceirosDiaBatch' | 'importLifetimeBatch' | 'importContactsBatch' | 'mergeAffiliateKeys' | 'mergePdfSnapshot', data: {...} }
  */
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
@@ -383,7 +385,14 @@ function doPost(e) {
   let result = { ok: true };
 
   try {
-    if (action === 'logImport') {
+    if (action === 'importParceirosDiaBatch') {
+      // body.data = array de {id, canal, mes, dados_json} — merge por id (outros meses/parceiros ficam)
+      const arr = (body.data || []).filter(d => d && d.id).map(d => ({
+        id: d.id, canal: d.canal || '', mes: d.mes || '', dados_json: d.dados_json || '{}', atualizado_em: now
+      }));
+      bulkMergeSheet_(SHEET_PARCEIROS_DIA, 'id', arr);
+      result.processed = arr.length;
+    } else if (action === 'logImport') {
       // body.data = {id, arquivo, tipo, parceiros, resumo} — registra um import feito no painel de
       // parceiros; a aba é criada sozinha no primeiro registro (upsertRow_ cria aba e colunas)
       const d = body.data || {};
