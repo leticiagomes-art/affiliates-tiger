@@ -296,11 +296,11 @@
 
   <div class="banner-import">
     <div class="info">
-      <b>Atualização diária:</b> jogue aqui o relatório da BuyGoods que chega por e-mail todo dia (Relatorio_BuyGoods_AAAA-MM-DD.xlsx) pra atualizar última venda, status, sequência e faturamento líquido de todos os produtos de uma vez. Sem precisar mexer no código. <span id="lastImportInfo"></span>
+      <b>Atualização diária:</b> jogue aqui o relatório da BuyGoods que chega por e-mail todo dia (Relatorio_BuyGoods_AAAA-MM-DD.xlsx) pra atualizar última venda, status, sequência e faturamento líquido de todos os produtos de uma vez. Dá pra selecionar vários dias de uma vez — cada arquivo substitui o próprio dia. <span id="lastImportInfo"></span>
     </div>
     <span class="file-input-btn btn-navy" style="padding:8px 14px; border-radius:5px; font-weight:700; font-size:12.5px; color:#fff;">
       Importar relatório BuyGoods
-      <input type="file" id="buyGoodsImportFile" accept=".xlsx,.xls,.csv">
+      <input type="file" id="buyGoodsImportFile" accept=".xlsx,.xls,.csv" multiple>
     </span>
     <button class="btn-orange" id="addAffiliateBtn">+ Inserir afiliado</button>
   </div>
@@ -1744,20 +1744,21 @@ function acumulaValor_(acc, actionType, row, hidx){
 }
 
 document.getElementById('buyGoodsImportFile').addEventListener('change', (ev) => {
-  const file = ev.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const wb = XLSX.read(e.target.result, {type:'binary', cellDates:false});
-      processBuyGoodsImport(wb, file.name);
-    } catch(err){
-      console.error(err);
-      alert('Não consegui ler esse arquivo. Confira se é o Relatorio_BuyGoods_AAAA-MM-DD.xlsx igual ao que chega por e-mail (uma aba por produto).');
-    }
-  };
-  reader.readAsBinaryString(file);
+  const files = Array.from(ev.target.files || []);
+  if(!files.length) return;
   ev.target.value = '';
+  Promise.all(files.map(file => new Promise(res => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try { res({wb: XLSX.read(e.target.result, {type:'binary', cellDates:false}), filename: file.name}); }
+      catch(err){ console.error(err); res({erro: file.name}); }
+    };
+    reader.readAsBinaryString(file);
+  }))).then(lidos => {
+    const ruins = lidos.filter(x => x.erro);
+    if(ruins.length){ alert('Não consegui ler: ' + ruins.map(x => x.erro).join(', ') + '. Confira se é o Relatorio_BuyGoods_AAAA-MM-DD.xlsx (uma aba por produto).'); return; }
+    processBuyGoodsImport(lidos);
+  });
 });
 
 // processMasterAffiliatesImport() e processContactsImport() (mais abaixo) não têm mais botão
@@ -1945,82 +1946,111 @@ function recalcTierFromLastSale_(ultimaVendaStr){
 }
 
 // ---------- Importar relatório BuyGoods (Relatorio_BuyGoods_AAAA-MM-DD.xlsx, uma aba por produto) ----------
-// Bucketiza por "Create Date" de cada linha (não pelo nome do arquivo), então funciona tanto pro
-// relatório diário (1 dia) quanto pra uma exportação com meses/ano inteiro de uma vez.
-async function processBuyGoodsImport(wb, filename){
+// Relatório diário: tudo que vem no arquivo entra no DIA DO RELATÓRIO — as vendas daquele dia e os
+// reembolsos/chargebacks processados naquele dia (mesmo que o pedido original seja de outro mês).
+// O arquivo "é dono" do dia: antes de gravar, o dia é zerado em todo mundo (produtos, afiliados,
+// canais) e reescrito do zero — então reimportar é seguro e nunca sobra dia pela metade. (Antes,
+// um reembolso de um pedido antigo fazia o dia antigo inteiro ser substituído só por esse reembolso.)
+// Dá pra mandar vários arquivos de uma vez; arquivos repetidos do mesmo dia são unidos sem duplicar
+// pedido (Order Item Id). Export sem data no nome (vários meses de uma vez): usa a Create Date.
+async function postEmLotes_(action, arr, tam){
+  tam = tam || 60;
+  let ok = true;
+  for(let i = 0; i < arr.length; i += tam){
+    const r = await apiPost(action, arr.slice(i, i + tam));
+    if(!(r && r.ok)) ok = false;
+  }
+  return ok;
+}
+async function processBuyGoodsImport(arquivos){
+  if(!Array.isArray(arquivos)) arquivos = [{wb: arguments[0], filename: arguments[1]}];
+  arquivos = arquivos.slice().sort((a,b) => String(a.filename).localeCompare(String(b.filename)));
   const byAff = {}; // nome_norm -> {nome, produtos:Set, daily:{dayKey:{vendas,faturamento}}}
-  const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS os afiliados (inclusive internos e vendas sem afiliado/diretas), pra bater com o total real da operação
-  const valorProdutoDia = {}; // produto -> {dayKey: {gross,refund,chargeback,shipping,taxes}} — mesma base do porProdutoDia
-  const canaisDia = {}; // canalKey -> {dayKey: {vendas,gross,refund,chargeback,shipping,taxes}} — Helpgrid, Welcome, Gestores
+  const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS (inclusive internos e vendas diretas)
+  const valorProdutoDia = {}; // produto -> {dayKey: {gross,refund,chargeback,shipping,taxes}}
+  const canaisDia = {}; // canalKey -> {dayKey: {vendas,gross,refund,chargeback,shipping,taxes}}
   let sheetsLidas = 0;
-  let diasEncontrados = new Set();
+  const diasEncontrados = new Set();
+  const diasDonos = new Set(); // dias de relatório diário — zerados em todo mundo antes de gravar
+  const vistos = new Set();
 
-  wb.SheetNames.forEach(produto => {
-    const ws = wb.Sheets[produto];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
-    if(!rows.length) return;
-    const header = rows[0];
-    const hidx = {};
-    header.forEach((h,i) => hidx[h] = i);
-    if(!('Affiliate Name' in hidx) || !('Action Type' in hidx) || !('Gross' in hidx) || !('Create Date' in hidx)) return;
-    sheetsLidas++;
+  arquivos.forEach(({wb, filename}) => {
+    const diaArq = (String(filename).match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || null;
+    if(diaArq) diasDonos.add(diaArq);
+    wb.SheetNames.forEach(produto => {
+      const ws = wb.Sheets[produto];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+      if(!rows.length) return;
+      const header = rows[0];
+      const hidx = {};
+      header.forEach((h,i) => hidx[h] = i);
+      if(!('Affiliate Name' in hidx) || !('Action Type' in hidx) || !('Gross' in hidx) || !('Create Date' in hidx)) return;
+      sheetsLidas++;
 
-    for(let i=1; i<rows.length; i++){
-      const row = rows[i];
-      if(!row) continue;
-      // pode vir sem afiliado (venda direta/orgânica) — ainda assim é uma venda real da operação,
-      // então só sai do loop mais abaixo, depois de contar no total por produto/dia e nos canais
-      const nome = row[hidx['Affiliate Name']];
+      for(let i=1; i<rows.length; i++){
+        const row = rows[i];
+        if(!row) continue;
+        // pode vir sem afiliado (venda direta/orgânica) — ainda assim é uma venda real da operação,
+        // então só sai do loop mais abaixo, depois de contar no total por produto/dia e nos canais
+        const nome = row[hidx['Affiliate Name']];
 
-      const canceledRaw = row[hidx['Was Canceled']];
-      if(canceledRaw == 1 || canceledRaw === '1' || canceledRaw === true) continue;
+        const canceledRaw = row[hidx['Was Canceled']];
+        if(canceledRaw == 1 || canceledRaw === '1' || canceledRaw === true) continue;
 
-      const dateRaw = row[hidx['Create Date']];
-      if(!dateRaw) continue;
-      const dt = new Date(dateRaw);
-      if(isNaN(dt.getTime())) continue;
-      const dayKey = dt.toISOString().slice(0,10);
-      diasEncontrados.add(dayKey);
+        const actionType = row[hidx['Action Type']];
+        let dayKey = diaArq;
+        if(!dayKey){
+          const dateRaw = row[hidx['Create Date']];
+          if(!dateRaw) continue;
+          const dt = new Date(dateRaw);
+          if(isNaN(dt.getTime())) continue;
+          dayKey = dt.toISOString().slice(0,10);
+        }
+        const idItem = 'Order Item Id' in hidx ? row[hidx['Order Item Id']] : null;
+        if(idItem !== null && idItem !== undefined && idItem !== ''){
+          const kId = idItem + '|' + actionType;
+          if(vistos.has(kId)) continue;
+          vistos.add(kId);
+        }
+        diasEncontrados.add(dayKey);
+        const nkey = normName(nome);
 
-      const actionType = row[hidx['Action Type']];
-      const nkey = normName(nome);
+        if(actionType === 'neworder' && isFrontal_(row, hidx)){
+          if(!porProdutoDia[produto]) porProdutoDia[produto] = {};
+          porProdutoDia[produto][dayKey] = (porProdutoDia[produto][dayKey] || 0) + 1;
+        }
 
-      if(actionType === 'neworder' && isFrontal_(row, hidx)){
-        if(!porProdutoDia[produto]) porProdutoDia[produto] = {};
-        porProdutoDia[produto][dayKey] = (porProdutoDia[produto][dayKey] || 0) + 1;
+        // bruto/líquido por produto e por dia — mesma regra do porProdutoDia acima: todo mundo, sem exclusão
+        if(!valorProdutoDia[produto]) valorProdutoDia[produto] = {};
+        if(!valorProdutoDia[produto][dayKey]) valorProdutoDia[produto][dayKey] = {gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
+        acumulaValor_(valorProdutoDia[produto][dayKey], actionType, row, hidx);
+
+        // contas internas (Helpgrid, Welcome, Gestores) — também sem exclusão
+        const canalKey = canalDoNome_(nkey);
+        if(canalKey){
+          if(!canaisDia[canalKey]) canaisDia[canalKey] = {};
+          if(!canaisDia[canalKey][dayKey]) canaisDia[canalKey][dayKey] = {vendas:0, gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
+          if(actionType === 'neworder' && isFrontal_(row, hidx)) canaisDia[canalKey][dayKey].vendas++;
+          acumulaValor_(canaisDia[canalKey][dayKey], actionType, row, hidx);
+        }
+
+        if(!nome || !nkey || isExcludedName(nkey)) continue; // daqui pra baixo é só o ranking por afiliado — precisa de nome
+
+        if(!byAff[nkey]) byAff[nkey] = {nome, produtos:new Set(), daily:{}};
+        const rec = byAff[nkey];
+        if(!rec.daily[dayKey]) rec.daily[dayKey] = {vendas:0, faturamento:0};
+
+        if(actionType === 'neworder'){
+          rec.daily[dayKey].vendas++;
+          rec.daily[dayKey].faturamento += parseFloat(row[hidx['Gross']]) || 0;
+          rec.produtos.add(produto);
+        } else if(actionType === 'refund'){
+          rec.daily[dayKey].faturamento -= parseFloat(row[hidx['Refund Amount']]) || 0;
+        } else if(actionType === 'chargeback'){
+          rec.daily[dayKey].faturamento -= parseFloat(row[hidx['Chargeback Amount']]) || 0;
+        }
       }
-
-      // bruto/líquido por produto e por dia — mesma regra do porProdutoDia acima: todo mundo, sem exclusão
-      if(!valorProdutoDia[produto]) valorProdutoDia[produto] = {};
-      if(!valorProdutoDia[produto][dayKey]) valorProdutoDia[produto][dayKey] = {gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
-      acumulaValor_(valorProdutoDia[produto][dayKey], actionType, row, hidx);
-
-      // contas internas com visão própria na lateral (Helpgrid, Welcome, Gestores) — também sem exclusão,
-      // é justamente o propósito dessas abas
-      const canalKey = canalDoNome_(nkey);
-      if(canalKey){
-        if(!canaisDia[canalKey]) canaisDia[canalKey] = {};
-        if(!canaisDia[canalKey][dayKey]) canaisDia[canalKey][dayKey] = {vendas:0, gross:0, refund:0, chargeback:0, shipping:0, taxes:0};
-        if(actionType === 'neworder' && isFrontal_(row, hidx)) canaisDia[canalKey][dayKey].vendas++;
-        acumulaValor_(canaisDia[canalKey][dayKey], actionType, row, hidx);
-      }
-
-      if(!nome || !nkey || isExcludedName(nkey)) continue; // daqui pra baixo é só o ranking por afiliado — precisa de nome
-
-      if(!byAff[nkey]) byAff[nkey] = {nome, produtos:new Set(), daily:{}};
-      const rec = byAff[nkey];
-      if(!rec.daily[dayKey]) rec.daily[dayKey] = {vendas:0, faturamento:0};
-
-      if(actionType === 'neworder'){
-        rec.daily[dayKey].vendas++;
-        rec.daily[dayKey].faturamento += parseFloat(row[hidx['Gross']]) || 0;
-        rec.produtos.add(produto);
-      } else if(actionType === 'refund'){
-        rec.daily[dayKey].faturamento -= parseFloat(row[hidx['Refund Amount']]) || 0;
-      } else if(actionType === 'chargeback'){
-        rec.daily[dayKey].faturamento -= parseFloat(row[hidx['Chargeback Amount']]) || 0;
-      }
-    }
+    });
   });
 
   if(sheetsLidas === 0){
@@ -2028,12 +2058,22 @@ async function processBuyGoodsImport(wb, filename){
     return;
   }
 
-  const keys = Object.keys(byAff);
+  // zera os dias de relatório em todo mundo (pra não sobrar pedaço de import antigo nesse dia)
+  const afetados = new Set(), produtosZerados = new Set(), produtosValorZerados = new Set(), canaisZerados = new Set();
+  diasDonos.forEach(dia => {
+    Object.keys(vendasPorProdutoDia).forEach(p => { if(dia in vendasPorProdutoDia[p]){ delete vendasPorProdutoDia[p][dia]; produtosZerados.add(p); } });
+    Object.keys(vendasValorPorProdutoDia).forEach(p => { if(dia in vendasValorPorProdutoDia[p]){ delete vendasValorPorProdutoDia[p][dia]; produtosValorZerados.add(p); } });
+    Object.keys(canaisPorDia).forEach(c => { if(dia in canaisPorDia[c]){ delete canaisPorDia[c][dia]; canaisZerados.add(c); } });
+    Object.keys(revenueDaily).forEach(k => { if(dia in revenueDaily[k]){ delete revenueDaily[k][dia]; afetados.add(k); } });
+    Object.keys(importUpdates).forEach(k => { const dd = importUpdates[k].dados_diarios; if(dd && dia in dd){ delete dd[dia]; afetados.add(k); } });
+  });
+
+  const keys = Array.from(new Set(Object.keys(byAff).concat(Array.from(afetados))));
   const existingKeys = new Set(DATA.map(e => normName(e.nome)));
   let updatedCount = 0, newCount = 0;
 
   keys.forEach(key => {
-    const rec = byAff[key];
+    const rec = byAff[key] || {nome: (importUpdates[key] && importUpdates[key].nome) || revenueNames[key] || key, produtos: new Set(), daily: {}};
     const produtos = Array.from(rec.produtos);
 
     let upd = importUpdates[key];
@@ -2048,15 +2088,22 @@ async function processBuyGoodsImport(wb, filename){
     if(!upd.dados_diarios) upd.dados_diarios = {};
     if(!revenueDaily[key]) revenueDaily[key] = {};
 
-    // grava cada dia encontrado nesse import (sobrescreve o dia se já existia — reimportar é seguro)
     Object.keys(rec.daily).forEach(dayKey => {
       const d = rec.daily[dayKey];
       const faturamento = Math.round(d.faturamento*100)/100;
       upd.dados_diarios[dayKey] = {orders: d.vendas, volume: faturamento};
       revenueDaily[key][dayKey] = {vendas: d.vendas, faturamento, produtos};
-      if(d.vendas > 0 && (!upd.ultima_venda || dayKey > upd.ultima_venda)) upd.ultima_venda = dayKey;
     });
-    revenueNames[key] = rec.nome;
+    if(byAff[key]) revenueNames[key] = rec.nome;
+
+    // última venda: o dia mais recente com pedido; se a anterior caiu num dia refeito agora e sem pedido, recalcula
+    const diasComVenda = Object.keys(upd.dados_diarios).filter(d => (upd.dados_diarios[d].orders||0) > 0).sort();
+    const maxDados = diasComVenda.length ? diasComVenda[diasComVenda.length-1] : null;
+    if(upd.ultima_venda && diasDonos.has(upd.ultima_venda) && !((upd.dados_diarios[upd.ultima_venda]||{}).orders > 0)){
+      const base = BASE_DATA.find(e => normName(e.nome) === key);
+      upd.ultima_venda = maxDados || (base && fmtDate_(base.ultima_venda)) || null;
+    }
+    if(maxDados && (!upd.ultima_venda || maxDados > upd.ultima_venda)) upd.ultima_venda = maxDados;
 
     // totais sempre recalculados a partir do histórico completo acumulado (idempotente — reimportar não duplica)
     let totalPedidos = 0, volumeTotal = 0;
@@ -2072,50 +2119,42 @@ async function processBuyGoodsImport(wb, filename){
     upd.dias_sem_vender = dias;
     upd.tier = tier;
     upd.streak_diario = streakDiario_(upd.dados_diarios, upd.ultima_venda ? new Date(upd.ultima_venda) : null);
-    upd.nome = rec.nome;
+    upd.nome = upd.nome || rec.nome;
     importUpdates[key] = upd;
 
-    if(existingKeys.has(key)) updatedCount++; else newCount++;
+    if(byAff[key]){ if(existingKeys.has(key)) updatedCount++; else newCount++; }
   });
 
   saveLS(LS_UPDATES, importUpdates);
   saveLS(LS_REVENUE, revenueDaily);
   saveLS(LS_REVENUE_NAMES, revenueNames);
 
-  // soma no total de vendas por produto por dia (Vendas por dia) — inclui contas internas de propósito,
-  // é o total real da operação, não o ranking de afiliados
-  const produtosTocados = Object.keys(porProdutoDia);
-  produtosTocados.forEach(produto => {
+  // total de vendas por produto por dia (Vendas por dia) — inclui contas internas de propósito
+  Object.keys(porProdutoDia).forEach(produto => {
     if(!vendasPorProdutoDia[produto]) vendasPorProdutoDia[produto] = {};
-    Object.keys(porProdutoDia[produto]).forEach(dayKey => {
-      vendasPorProdutoDia[produto][dayKey] = porProdutoDia[produto][dayKey];
-    });
+    Object.keys(porProdutoDia[produto]).forEach(dayKey => { vendasPorProdutoDia[produto][dayKey] = porProdutoDia[produto][dayKey]; });
   });
+  const produtosTocados = Array.from(new Set(Object.keys(porProdutoDia).concat(Array.from(produtosZerados))));
   saveLS(LS_VENDAS_PRODUTO, vendasPorProdutoDia);
 
-  // idem pro bruto/líquido por produto (reimportar é seguro — sobrescreve o dia)
-  const produtosValorTocados = Object.keys(valorProdutoDia);
-  produtosValorTocados.forEach(produto => {
+  Object.keys(valorProdutoDia).forEach(produto => {
     if(!vendasValorPorProdutoDia[produto]) vendasValorPorProdutoDia[produto] = {};
-    Object.keys(valorProdutoDia[produto]).forEach(dayKey => {
-      vendasValorPorProdutoDia[produto][dayKey] = valorProdutoDia[produto][dayKey];
-    });
+    Object.keys(valorProdutoDia[produto]).forEach(dayKey => { vendasValorPorProdutoDia[produto][dayKey] = valorProdutoDia[produto][dayKey]; });
   });
+  const produtosValorTocados = Array.from(new Set(Object.keys(valorProdutoDia).concat(Array.from(produtosValorZerados))));
   saveLS(LS_VENDAS_VALOR, vendasValorPorProdutoDia);
 
-  // idem pros canais internos (Helpgrid, Welcome, Gestores)
-  const canaisTocados = Object.keys(canaisDia);
-  canaisTocados.forEach(canalKey => {
+  Object.keys(canaisDia).forEach(canalKey => {
     if(!canaisPorDia[canalKey]) canaisPorDia[canalKey] = {};
-    Object.keys(canaisDia[canalKey]).forEach(dayKey => {
-      canaisPorDia[canalKey][dayKey] = canaisDia[canalKey][dayKey];
-    });
+    Object.keys(canaisDia[canalKey]).forEach(dayKey => { canaisPorDia[canalKey][dayKey] = canaisDia[canalKey][dayKey]; });
   });
+  const canaisTocados = Array.from(new Set(Object.keys(canaisDia).concat(Array.from(canaisZerados))));
   saveLS(LS_CANAIS, canaisPorDia);
 
   const diasOrdenados = Array.from(diasEncontrados).sort();
   const periodoTxt = diasOrdenados.length > 1 ? `${diasOrdenados[0]} a ${diasOrdenados[diasOrdenados.length-1]}` : (diasOrdenados[0] || '—');
-  lastImportInfo = {filename, date: new Date().toISOString(), updated: updatedCount, novos: newCount, periodo: periodoTxt};
+  const nomeArq = arquivos.length === 1 ? arquivos[0].filename : `${arquivos.length} arquivos`;
+  lastImportInfo = {filename: nomeArq, date: new Date().toISOString(), updated: updatedCount, novos: newCount, periodo: periodoTxt};
   saveLS(LS_IMPORT_INFO, lastImportInfo);
 
   DATA = buildData();
@@ -2132,19 +2171,20 @@ async function processBuyGoodsImport(wb, filename){
       rec.dados_diarios = JSON.stringify(rec.dados_diarios || {});
       return rec;
     });
-    const revenueBatch = keys.map(key => ({nome: byAff[key].nome, dados_json: JSON.stringify(revenueDaily[key])}));
+    const revenueBatch = keys.map(key => ({nome: revenueNames[key] || importUpdates[key].nome || key, dados_json: JSON.stringify(revenueDaily[key] || {})}));
     const vendasProdutoBatch = produtosTocados.map(produto => ({produto, dados_json: JSON.stringify(vendasPorProdutoDia[produto])}));
     const vendasValorBatch = produtosValorTocados.map(produto => ({produto, dados_json: JSON.stringify(vendasValorPorProdutoDia[produto])}));
     const canaisBatch = canaisTocados.map(canal => ({canal, dados_json: JSON.stringify(canaisPorDia[canal])}));
-    const [r1, r2, r3, r4, r5] = await Promise.all([
-      apiPost('importBatch', importBatch), apiPost('importRevenueBatch', revenueBatch),
-      apiPost('importVendasProdutoBatch', vendasProdutoBatch), apiPost('importVendasValorBatch', vendasValorBatch),
-      apiPost('importCanaisBatch', canaisBatch)
+    const oks = await Promise.all([
+      postEmLotes_('importBatch', importBatch), postEmLotes_('importRevenueBatch', revenueBatch),
+      postEmLotes_('importVendasProdutoBatch', vendasProdutoBatch), postEmLotes_('importVendasValorBatch', vendasValorBatch),
+      postEmLotes_('importCanaisBatch', canaisBatch)
     ]);
-    if(r1 && r1.ok && r2 && r2.ok && r3 && r3.ok && r4 && r4.ok && r5 && r5.ok){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
+    if(oks.every(Boolean)){ syncStatus='ok'; showToast(`Sincronizado: ${keys.length} afiliados no Google Sheets ✓`); }
     else { syncStatus='erro'; showToast('Import salvo localmente, mas não sincronizou com o Sheets ainda'); }
     renderSyncBadge();
   }
+  return {keys: keys.length, dias: diasOrdenados, produtos: produtosTocados.length, afetados: afetados.size};
 }
 
 function renderImportInfo(){
