@@ -2063,7 +2063,8 @@ async function processBuyGoodsImport(arquivos){
   diasDonos.forEach(dia => {
     Object.keys(vendasPorProdutoDia).forEach(p => { if(dia in vendasPorProdutoDia[p]){ delete vendasPorProdutoDia[p][dia]; produtosZerados.add(p); } });
     Object.keys(vendasValorPorProdutoDia).forEach(p => { if(dia in vendasValorPorProdutoDia[p]){ delete vendasValorPorProdutoDia[p][dia]; produtosValorZerados.add(p); } });
-    Object.keys(canaisPorDia).forEach(c => { if(dia in canaisPorDia[c]){ delete canaisPorDia[c][dia]; canaisZerados.add(c); } });
+    // Sales Bound não vem da BuyGoods (o dia a dia dela é lançado à mão do CRM) — não zera
+    Object.keys(canaisPorDia).forEach(c => { if(c !== 'welcome_salesbound' && dia in canaisPorDia[c]){ delete canaisPorDia[c][dia]; canaisZerados.add(c); } });
     Object.keys(revenueDaily).forEach(k => { if(dia in revenueDaily[k]){ delete revenueDaily[k][dia]; afetados.add(k); } });
     Object.keys(importUpdates).forEach(k => { const dd = importUpdates[k].dados_diarios; if(dd && dia in dd){ delete dd[dia]; afetados.add(k); } });
   });
