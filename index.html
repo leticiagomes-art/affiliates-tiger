@@ -2142,6 +2142,19 @@ async function processBuyGoodsImport(arquivos){
     return;
   }
 
+  // trava contra arquivo incompleto (ex: relatório baixado pela metade, com poucas abas de produto): se o dia
+  // já tem bem mais vendas no painel do que o arquivo traz, pergunta antes de apagar e regravar o dia
+  const suspeitos = Array.from(diasDonos).map(dia => {
+    const novo = Object.values(porProdutoDia).reduce((s, x) => s + (x[dia] || 0), 0);
+    const antes = Object.values(vendasPorProdutoDia).reduce((s, x) => s + (x[dia] || 0), 0);
+    return {dia, novo, antes};
+  }).filter(x => x.antes >= 30 && x.novo < x.antes * 0.4);
+  if(suspeitos.length && !confirm('Atenção: parece arquivo incompleto.\n\n' + suspeitos.map(x => `${x.dia}: o arquivo tem ${x.novo} vendas, mas o painel já tem ${x.antes} nesse dia.`).join('\n') +
+    '\n\nSe continuar, o dia é apagado e fica só com o que está no arquivo. Confira se o relatório tem todas as abas de produto.\n\nSubstituir mesmo assim?')){
+    showToast('Import cancelado — nada mudou');
+    return;
+  }
+
   // zera os dias de relatório em todo mundo (pra não sobrar pedaço de import antigo nesse dia)
   const afetados = new Set(), produtosZerados = new Set(), produtosValorZerados = new Set(), canaisZerados = new Set();
   diasDonos.forEach(dia => {
