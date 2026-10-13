@@ -1038,15 +1038,8 @@ function buildScript(entry){
 }
 
 function renderStats(list){
-  const total = list.length;
-  const comContato = list.filter(e => e.telefone || e.telegram).length;
-  const confirmados = list.filter(e => e.confirmado).length;
-  const volume = list.reduce((s,e) => s + (e.volume_total||0), 0);
   document.getElementById('headerStats').innerHTML = `
-    <div class="stat-chip"><b>${total}</b><span>Afiliados</span></div>
-    <div class="stat-chip"><b>${comContato}</b><span>Com contato</span></div>
-    <div class="stat-chip"><b>${confirmados}</b><span>C/ venda confirmada</span></div>
-    <div class="stat-chip"><b>${fmtMoney(volume)}</b><span>Volume confirmado</span></div>`;
+    <div class="stat-chip"><b>${list.length}</b><span>Afiliados</span></div>`;
 }
 
 function contactCell(e){
