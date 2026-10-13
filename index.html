@@ -216,6 +216,9 @@
   table.of-mini th{background:transparent; color:var(--muted); text-transform:none; letter-spacing:0; font-size:11px; font-weight:600; padding:4px 6px; border-bottom:1px solid var(--line); text-align:left; position:static;}
   table.of-mini td{padding:5px 6px; border-bottom:1px solid var(--line); height:auto;}
   table.of-mini .of-r, table .of-r{text-align:right; font-variant-numeric:tabular-nums;}
+  .trafego-sel{width:100%; max-width:150px; font:inherit; font-size:12px; padding:4px 6px; border:1px solid var(--line); border-radius:5px; background:transparent; color:inherit; cursor:pointer;}
+  .trafego-sel.vazio{color:var(--muted);}
+  .trafego-sel option{color:#181B22; background:#fff;}
 </style>
 <script>
   // aplica o tema antes da primeira pintura da página, pra não piscar claro→escuro
@@ -374,12 +377,13 @@
   <table>
     <thead>
       <tr>
-        <th style="width:18%">Afiliado</th>
-        <th style="width:13%">Produto</th>
-        <th style="width:13%" id="thFaturamento">Faturamento do mês</th>
-        <th style="width:10%">Parado há</th>
-        <th style="width:19%">Contato</th>
-        <th style="width:17%">Ação</th>
+        <th style="width:16%">Afiliado</th>
+        <th style="width:12%">Produto</th>
+        <th style="width:11%">Fonte de tráfego</th>
+        <th style="width:12%" id="thFaturamento">Faturamento do mês</th>
+        <th style="width:9%">Parado há</th>
+        <th style="width:17%">Contato</th>
+        <th style="width:16%">Ação</th>
       </tr>
     </thead>
     <tbody id="tableBody"></tbody>
@@ -1322,6 +1326,68 @@ function renderTopParadosCards(){
   });
 }
 
+// ---------- Fonte de tráfego (coluna editável na lista) ----------
+const FONTES_TRAFEGO = ['Google - Fundo', 'Google - Topo', 'Search', 'Youtube', 'Newsbreak', 'Meta', 'Taboola'];
+const TRAFEGO_LEGADO = {facebook: 'Meta', youtube: 'Youtube'}; // valores antigos do select (Facebook/YouTube)
+function trafegoNorm_(v){
+  v = String(v || '').trim();
+  const f = FONTES_TRAFEGO.find(x => x.toLowerCase() === v.toLowerCase());
+  return f || TRAFEGO_LEGADO[v.toLowerCase()] || v;
+}
+function trafegoDe_(nome){ return trafegoNorm_((affiliateMeta[normName(nome)] || {}).trafego); }
+function trafegoOpcoes_(atual){
+  const custom = atual && !FONTES_TRAFEGO.includes(atual);
+  return `<option value="">—</option>` + FONTES_TRAFEGO.map(f => `<option value="${escapeHtml(f)}"${f === atual ? ' selected' : ''}>${escapeHtml(f)}</option>`).join('')
+    + (custom ? `<option value="${escapeHtml(atual)}" selected>${escapeHtml(atual)}</option>` : '')
+    + `<option value="__outros">Outros: digitar…</option>`;
+}
+function trafegoCell_(e, idx){
+  const t = trafegoDe_(e.nome);
+  return `<select class="trafego-sel${t ? '' : ' vazio'}" data-trafego="${idx}" title="Fonte de tráfego">${trafegoOpcoes_(t)}</select>`;
+}
+async function salvarTrafego_(entry, valor){
+  const key = normName(entry.nome);
+  const meta = Object.assign({}, affiliateMeta[key] || {}, {trafego: trafegoNorm_(valor)});
+  affiliateMeta[key] = meta;
+  saveLS(LS_META, affiliateMeta);
+  renderTable();
+  showToast(APPS_SCRIPT_URL ? 'Fonte de tráfego salva — sincronizando...' : 'Fonte de tráfego salva (neste navegador)');
+  const res = await apiPost('saveAffiliateMeta', Object.assign({nome: entry.nome}, meta));
+  if(res && res.ok){ syncStatus = 'ok'; showToast('Sincronizado com Google Sheets ✓'); }
+  else if(APPS_SCRIPT_URL){ syncStatus = 'erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
+  renderSyncBadge();
+}
+function ligarTrafego_(root){
+  root.querySelectorAll('select.trafego-sel').forEach(sel => {
+    sel.addEventListener('click', ev => ev.stopPropagation());
+    sel.addEventListener('change', () => {
+      const entry = currentList[parseInt(sel.dataset.trafego)];
+      if(sel.value !== '__outros'){ salvarTrafego_(entry, sel.value); return; }
+      // "Outros": vira campo de texto ali mesmo — Enter (ou sair do campo) salva, Esc cancela
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.className = 'trafego-sel'; inp.placeholder = 'Digite a fonte…';
+      sel.replaceWith(inp); inp.focus();
+      let feito = false;
+      const fim = ok => { if(feito) return; feito = true; const v = inp.value.trim(); if(ok && v) salvarTrafego_(entry, v); else renderTable(); };
+      inp.addEventListener('click', ev => ev.stopPropagation());
+      inp.addEventListener('keydown', ev => { if(ev.key === 'Enter') fim(true); else if(ev.key === 'Escape') fim(false); });
+      inp.addEventListener('blur', () => fim(true));
+    });
+  });
+}
+// selects dos formulários (inserir afiliado / ficha do afiliado): mesma lista; "Outros" pede o texto
+function trafegoOutrosForm_(sel){
+  if(sel.value !== '__outros') return;
+  const v = trafegoNorm_(prompt('Fonte de tráfego:') || '');
+  sel.innerHTML = trafegoOpcoes_(v);
+}
+['mTrafego', 'dTrafego'].forEach(id => {
+  const s = document.getElementById(id);
+  if(!s) return;
+  s.innerHTML = trafegoOpcoes_('');
+  s.addEventListener('change', () => trafegoOutrosForm_(s));
+});
+
 function renderTable(){
   const start = (currentPage-1)*PAGE_SIZE;
   const pageItems = currentList.slice(start, start+PAGE_SIZE);
@@ -1347,6 +1413,7 @@ function renderTable(){
     <tr>
       <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name" data-detail="${idx}">${escapeHtml(e.nome)}</span><br><span class="row-sub">${e.ultima_venda ? 'última venda '+escapeHtml(fmtDate_(e.ultima_venda)) : 'sem venda registrada'}</span></td>
       <td class="row-sub">${ofertasCell_(e) || escapeHtml(produtosFallback_(e).join(', ')) || '—'}</td>
+      <td>${trafegoCell_(e, idx)}</td>
       <td>${faturamentoCell}</td>
       <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}</td>
       <td>${contactCell(e)}</td>
@@ -1356,7 +1423,7 @@ function renderTable(){
         ${(e.fontes_planilha||[]).includes('adicionado manualmente') ? `<button class="danger" data-delbtn="${idx}">Excluir</button>` : ''}
       </td>
     </tr>
-    <tr class="script-row" id="${rowId}"><td colspan="6"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
+    <tr class="script-row" id="${rowId}"><td colspan="7"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
   }).join('');
 
   tbody.querySelectorAll('button[data-script]').forEach(btn => {
@@ -1405,6 +1472,7 @@ function renderTable(){
     });
   });
 
+  ligarTrafego_(tbody);
   renderPager();
 }
 
@@ -1499,13 +1567,13 @@ document.getElementById('monthFilter').addEventListener('change', () => {
 });
 
 document.getElementById('copySheetsBtn').addEventListener('click', () => {
-  const header = ['Nome','Confirmado (Orders_2026)','Produtos','Volume Historico','Volume Ago','Volume Set','Net Ago','Net Set','Ultima Venda','Dias Sem Vender','Tier','Telefone','Conf. Telefone','Telegram','Conf. Telegram','Status Planilha','Ultimo Contato Registrado'];
+  const header = ['Nome','Confirmado (Orders_2026)','Produtos','Fonte de Trafego','Volume Historico','Volume Ago','Volume Set','Net Ago','Net Set','Ultima Venda','Dias Sem Vender','Tier','Telefone','Conf. Telefone','Telegram','Conf. Telegram','Status Planilha','Ultimo Contato Registrado'];
   const lines = [header.join('\t')];
   currentList.forEach(e => {
     const log = ultimoContato_(normName(e.nome));
     const logTxt = log ? `${log.oferta} (${log.data}): ${log.resumo||''}` : '';
     lines.push([
-      e.nome, e.confirmado?'sim':'nao', (e.produtos||[]).join('; '),
+      e.nome, e.confirmado?'sim':'nao', (e.produtos||[]).join('; '), trafegoDe_(e.nome),
       (e.volume_total||0).toFixed(2),
       e.volume_ago!==null&&e.volume_ago!==undefined?e.volume_ago.toFixed(2):'',
       e.volume_set!==null&&e.volume_set!==undefined?e.volume_set.toFixed(2):'',
@@ -1653,7 +1721,7 @@ function openDetailModal(entry){
   document.getElementById('dTelefone').value = entry.telefone || '';
   document.getElementById('dTelegram').value = entry.telegram || '';
   document.getElementById('dNomeDash').value = meta.nome_dash || '';
-  document.getElementById('dTrafego').value = meta.trafego || '';
+  document.getElementById('dTrafego').innerHTML = trafegoOpcoes_(trafegoDe_(entry.nome));
   document.getElementById('dCpa').value = meta.cpa || '';
   document.getElementById('dBuygoods').value = meta.buygoods_user || '';
   document.getElementById('dAtendente').value = meta.atendente || '';
