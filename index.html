@@ -350,6 +350,7 @@
       <option value="sim">Vendeu esta semana</option>
       <option value="nao">Não vendeu esta semana</option>
     </select>
+    <select id="trafegoFilter"><option value="">Fonte de tráfego: todas</option></select>
     <select id="sortFilter">
       <option value="">Ordem padrão</option>
       <option value="dias_desc">Dias sem vender (mais dias primeiro)</option>
@@ -1197,6 +1198,8 @@ function applyFilters(){
   const contact = document.getElementById('contactFilter').value;
   const ontemF = document.getElementById('ontemFilter').value;
   const semanaF = document.getElementById('semanaFilter').value;
+  atualizarFiltroTrafego_();
+  const trafegoF = document.getElementById('trafegoFilter').value;
   currentList = DATA.filter(e => {
     if(q){
       const hay = (e.nome+' '+(e.produtos||[]).join(' ')).toLowerCase();
@@ -1212,6 +1215,8 @@ function applyFilters(){
     if(ontemF === 'nao' && vendeuNoPeriodo_(e,1,1)) return false;
     if(semanaF === 'sim' && !vendeuNoPeriodo_(e,7,0)) return false;
     if(semanaF === 'nao' && vendeuNoPeriodo_(e,7,0)) return false;
+    if(trafegoF === '__sem' && trafegoDe_(e.nome)) return false;
+    if(trafegoF && trafegoF !== '__sem' && trafegoDe_(e.nome) !== trafegoF) return false;
     return true;
   });
   const sortBy = document.getElementById('sortFilter').value;
@@ -1350,12 +1355,26 @@ async function salvarTrafego_(entry, valor){
   const meta = Object.assign({}, affiliateMeta[key] || {}, {trafego: trafegoNorm_(valor)});
   affiliateMeta[key] = meta;
   saveLS(LS_META, affiliateMeta);
+  atualizarFiltroTrafego_();
   renderTable();
   showToast(APPS_SCRIPT_URL ? 'Fonte de tráfego salva — sincronizando...' : 'Fonte de tráfego salva (neste navegador)');
   const res = await apiPost('saveAffiliateMeta', Object.assign({nome: entry.nome}, meta));
   if(res && res.ok){ syncStatus = 'ok'; showToast('Sincronizado com Google Sheets ✓'); }
   else if(APPS_SCRIPT_URL){ syncStatus = 'erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
   renderSyncBadge();
+}
+// filtro "Fonte de tráfego": lista fixa + o que foi digitado em "Outros", com quantos afiliados em cada
+function atualizarFiltroTrafego_(){
+  const sel = document.getElementById('trafegoFilter');
+  if(!sel) return;
+  const cont = {}; let sem = 0;
+  DATA.forEach(e => { const t = trafegoDe_(e.nome); if(t) cont[t] = (cont[t] || 0) + 1; else sem++; });
+  const extras = Object.keys(cont).filter(t => !FONTES_TRAFEGO.includes(t)).sort((a, b) => a.localeCompare(b));
+  const atual = sel.value;
+  sel.innerHTML = `<option value="">Fonte de tráfego: todas</option>`
+    + FONTES_TRAFEGO.concat(extras).map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)} (${cont[t] || 0})</option>`).join('')
+    + `<option value="__sem">Sem fonte informada (${sem})</option>`;
+  sel.value = [...sel.options].some(o => o.value === atual) ? atual : '';
 }
 function ligarTrafego_(root){
   root.querySelectorAll('select.trafego-sel').forEach(sel => {
@@ -1558,6 +1577,7 @@ document.getElementById('porOfertaBusca').addEventListener('input', renderPorOfe
 document.getElementById('searchBox').addEventListener('input', applyFilters);
 document.getElementById('tierFilter').addEventListener('change', applyFilters);
 document.getElementById('contactFilter').addEventListener('change', applyFilters);
+document.getElementById('trafegoFilter').addEventListener('change', applyFilters);
 document.getElementById('ontemFilter').addEventListener('change', applyFilters);
 document.getElementById('semanaFilter').addEventListener('change', applyFilters);
 document.getElementById('sortFilter').addEventListener('change', applyFilters);
