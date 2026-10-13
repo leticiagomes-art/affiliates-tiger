@@ -263,6 +263,19 @@ function sheetToObjectsBy_(sheetName, keyField) {
   return out;
 }
 
+function lerLinha_(sheetName, keyField, keyValue) {
+  // devolve a linha (como objeto) cuja coluna keyField == keyValue, ou null
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sh || sh.getLastRow() < 2) return null;
+  const data = sh.getDataRange().getValues();
+  const h = data[0], ki = h.indexOf(keyField);
+  if (ki === -1) return null;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][ki] === keyValue) { const o = {}; h.forEach((c, j) => { if (c) o[c] = data[i][j]; }); return o; }
+  }
+  return null;
+}
+
 function upsertRow_(sheetName, keyField, keyValue, rowObj) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
@@ -433,13 +446,15 @@ function doPost(e) {
       deleteRow_(SHEET_ADDED, 'nome_norm', key);
       deleteRow_(SHEET_META, 'nome_norm', key);
     } else if (action === 'saveAffiliateMeta') {
+      // grava só os campos que vieram; o que o cliente não mandou (ex: perfil, quando quem salvou foi
+      // um formulário que não tem esse campo) continua como estava na planilha
       const d = body.data;
       const key = normName_(d.nome);
-      upsertRow_(SHEET_META, 'nome_norm', key, {
-        nome_norm: key, nome: d.nome, nome_dash: d.nome_dash || '', trafego: d.trafego || '',
-        cpa: d.cpa || '', buygoods_user: d.buygoods_user || '',
-        telefone: d.telefone || '', telegram: d.telegram || '', atendente: d.atendente || '', atualizado_em: now
+      const row = Object.assign({}, lerLinha_(SHEET_META, 'nome_norm', key) || {}, { nome_norm: key, nome: d.nome, atualizado_em: now });
+      ['nome_dash', 'trafego', 'cpa', 'buygoods_user', 'telefone', 'telegram', 'atendente', 'perfil'].forEach(f => {
+        if (d[f] !== undefined) row[f] = d[f] === null ? '' : d[f];
       });
+      upsertRow_(SHEET_META, 'nome_norm', key, row);
     } else if (action === 'logContact') {
       // body.data = {nome, historico_json} — historico_json já vem com a lista inteira (o cliente
       // acumula/mantém o que já existia antes de adicionar o novo registro), então isso é sempre

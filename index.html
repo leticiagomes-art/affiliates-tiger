@@ -219,6 +219,12 @@
   .trafego-sel{width:100%; max-width:150px; font:inherit; font-size:12px; padding:4px 6px; border:1px solid var(--line); border-radius:5px; background:transparent; color:inherit; cursor:pointer;}
   .trafego-sel.vazio{color:var(--muted);}
   .trafego-sel option{color:#181B22; background:#fff;}
+  .perfil-sel{width:100%; max-width:120px; font:inherit; font-size:12px; font-weight:700; padding:4px 6px; border:1px solid var(--line); border-radius:999px; background:transparent; color:inherit; cursor:pointer;}
+  .perfil-sel.vazio{font-weight:400; color:var(--muted);}
+  .perfil-sel option{color:#181B22; background:#fff; font-weight:400;}
+  .perfil-legenda{display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; font-size:12px; color:var(--muted); margin:0 0 10px;}
+  .perfil-legenda b{color:var(--ink);}
+  .perfil-dot{display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:-1px;}
 </style>
 <script>
   // aplica o tema antes da primeira pintura da página, pra não piscar claro→escuro
@@ -350,6 +356,7 @@
       <option value="sim">Vendeu esta semana</option>
       <option value="nao">Não vendeu esta semana</option>
     </select>
+    <select id="perfilFilter"><option value="">Perfil: todos</option></select>
     <select id="trafegoFilter"><option value="">Fonte de tráfego: todas</option></select>
     <select id="sortFilter">
       <option value="">Ordem padrão</option>
@@ -374,17 +381,19 @@
     <span>clique no nome do afiliado pra ver produtos, volume, tendência e histórico de vendas</span>
   </div>
 
+  <div class="perfil-legenda" id="perfilLegenda"></div>
   <div class="table-scroll">
   <table>
     <thead>
       <tr>
-        <th style="width:16%">Afiliado</th>
-        <th style="width:12%">Produto</th>
+        <th style="width:15%">Afiliado</th>
+        <th style="width:11%">Produto</th>
         <th style="width:11%">Fonte de tráfego</th>
-        <th style="width:12%" id="thFaturamento">Faturamento do mês</th>
-        <th style="width:9%">Parado há</th>
-        <th style="width:17%">Contato</th>
-        <th style="width:16%">Ação</th>
+        <th style="width:9%">Perfil</th>
+        <th style="width:11%" id="thFaturamento">Faturamento do mês</th>
+        <th style="width:8%">Parado há</th>
+        <th style="width:16%">Contato</th>
+        <th style="width:15%">Ação</th>
       </tr>
     </thead>
     <tbody id="tableBody"></tbody>
@@ -556,6 +565,10 @@
           <option value="YouTube">YouTube</option>
           <option value="Outro">Outro</option>
         </select>
+      </div>
+      <div>
+        <label>Perfil do afiliado</label>
+        <select id="dPerfil"></select>
       </div>
       <div>
         <label>CPA do afiliado</label>
@@ -748,7 +761,7 @@ function serverMetaToLocal(obj){
   Object.keys(obj).forEach(k => {
     const r = obj[k];
     out[k] = {nome_dash: r.nome_dash || '', trafego: r.trafego || '', cpa: r.cpa || '', buygoods_user: r.buygoods_user || '',
-      telefone: r.telefone || '', telegram: r.telegram || '', atendente: r.atendente || ''};
+      telefone: r.telefone || '', telegram: r.telegram || '', atendente: r.atendente || '', perfil: r.perfil || ''};
   });
   return out;
 }
@@ -1193,6 +1206,8 @@ function applyFilters(){
   const semanaF = document.getElementById('semanaFilter').value;
   atualizarFiltroTrafego_();
   const trafegoF = document.getElementById('trafegoFilter').value;
+  atualizarFiltroPerfil_();
+  const perfilF = document.getElementById('perfilFilter').value;
   currentList = DATA.filter(e => {
     if(q){
       const hay = (e.nome+' '+(e.produtos||[]).join(' ')).toLowerCase();
@@ -1210,6 +1225,8 @@ function applyFilters(){
     if(semanaF === 'nao' && vendeuNoPeriodo_(e,7,0)) return false;
     if(trafegoF === '__sem' && trafegoDe_(e.nome)) return false;
     if(trafegoF && trafegoF !== '__sem' && trafegoDe_(e.nome) !== trafegoF) return false;
+    if(perfilF === '__sem' && perfilDe_(e.nome)) return false;
+    if(perfilF && perfilF !== '__sem' && perfilDe_(e.nome) !== perfilF) return false;
     return true;
   });
   const sortBy = document.getElementById('sortFilter').value;
@@ -1343,19 +1360,7 @@ function trafegoCell_(e, idx){
   const t = trafegoDe_(e.nome);
   return `<select class="trafego-sel${t ? '' : ' vazio'}" data-trafego="${idx}" title="Fonte de tráfego">${trafegoOpcoes_(t)}</select>`;
 }
-async function salvarTrafego_(entry, valor){
-  const key = normName(entry.nome);
-  const meta = Object.assign({}, affiliateMeta[key] || {}, {trafego: trafegoNorm_(valor)});
-  affiliateMeta[key] = meta;
-  saveLS(LS_META, affiliateMeta);
-  atualizarFiltroTrafego_();
-  renderTable();
-  showToast(APPS_SCRIPT_URL ? 'Fonte de tráfego salva — sincronizando...' : 'Fonte de tráfego salva (neste navegador)');
-  const res = await apiPost('saveAffiliateMeta', Object.assign({nome: entry.nome}, meta));
-  if(res && res.ok){ syncStatus = 'ok'; showToast('Sincronizado com Google Sheets ✓'); }
-  else if(APPS_SCRIPT_URL){ syncStatus = 'erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
-  renderSyncBadge();
-}
+function salvarTrafego_(entry, valor){ return salvarMetaCampo_(entry, 'trafego', trafegoNorm_(valor), 'Fonte de tráfego'); }
 // filtro "Fonte de tráfego": lista fixa + o que foi digitado em "Outros", com quantos afiliados em cada
 function atualizarFiltroTrafego_(){
   const sel = document.getElementById('trafegoFilter');
@@ -1400,6 +1405,68 @@ function trafegoOutrosForm_(sel){
   s.addEventListener('change', () => trafegoOutrosForm_(s));
 });
 
+// ---------- Perfil do afiliado (relacionamento) ----------
+const PERFIS = [
+  {v: 'Quente', cor: '#D9480F', txt: '#fff', desc: 'sempre roda e testa'},
+  {v: 'Morno', cor: '#F2B01E', txt: '#2B1D00', desc: 'sempre aparece interessado'},
+  {v: 'Frio', cor: '#1971C2', txt: '#fff', desc: 'pede tudo, não roda nada'},
+  {v: 'Vácuo', cor: '#5F3DC4', txt: '#fff', desc: 'não responde (últimas 10 msg)'},
+  {v: 'Sem contato', cor: '#6B7280', txt: '#fff', desc: 'não temos mais onde falar com ele'}
+];
+function perfilDe_(nome){
+  const p = String((affiliateMeta[normName(nome)] || {}).perfil || '').trim();
+  const f = PERFIS.find(x => x.v.toLowerCase() === p.toLowerCase());
+  return f ? f.v : p;
+}
+function perfilOpcoes_(atual){
+  return `<option value="">—</option>` + PERFIS.map(p => `<option value="${p.v}"${p.v === atual ? ' selected' : ''}>${p.v}</option>`).join('');
+}
+function perfilEstilo_(v){
+  const p = PERFIS.find(x => x.v === v);
+  return p ? `background:${p.cor}; color:${p.txt}; border-color:${p.cor};` : '';
+}
+function perfilCell_(e, idx){
+  const v = perfilDe_(e.nome), p = PERFIS.find(x => x.v === v);
+  return `<select class="perfil-sel${v ? '' : ' vazio'}" data-perfil="${idx}" style="${perfilEstilo_(v)}" title="${p ? escapeHtml(p.v + ' — ' + p.desc) : 'Perfil do afiliado'}">${perfilOpcoes_(v)}</select>`;
+}
+function perfilLegendaHtml_(){
+  return `<b>Perfil:</b>` + PERFIS.map(p => `<span><span class="perfil-dot" style="background:${p.cor}"></span><b>${p.v}</b> · ${p.desc}</span>`).join('');
+}
+async function salvarMetaCampo_(entry, campo, valor, rotulo){
+  const key = normName(entry.nome);
+  const meta = Object.assign({}, affiliateMeta[key] || {}, {[campo]: valor});
+  affiliateMeta[key] = meta;
+  saveLS(LS_META, affiliateMeta);
+  atualizarFiltroTrafego_(); atualizarFiltroPerfil_();
+  renderTable();
+  showToast(APPS_SCRIPT_URL ? `${rotulo} salvo — sincronizando...` : `${rotulo} salvo (neste navegador)`);
+  const res = await apiPost('saveAffiliateMeta', Object.assign({nome: entry.nome}, meta));
+  if(res && res.ok){ syncStatus = 'ok'; showToast('Sincronizado com Google Sheets ✓'); }
+  else if(APPS_SCRIPT_URL){ syncStatus = 'erro'; showToast('Não sincronizou — ficou salvo só neste navegador por enquanto'); }
+  renderSyncBadge();
+}
+function ligarPerfil_(root){
+  root.querySelectorAll('select.perfil-sel').forEach(sel => {
+    sel.addEventListener('click', ev => ev.stopPropagation());
+    sel.addEventListener('change', () => salvarMetaCampo_(currentList[parseInt(sel.dataset.perfil)], 'perfil', sel.value, 'Perfil'));
+  });
+}
+function atualizarFiltroPerfil_(){
+  const sel = document.getElementById('perfilFilter');
+  if(!sel) return;
+  const cont = {}; let sem = 0;
+  DATA.forEach(e => { const p = perfilDe_(e.nome); if(p) cont[p] = (cont[p] || 0) + 1; else sem++; });
+  const atual = sel.value;
+  sel.innerHTML = `<option value="">Perfil: todos</option>` + PERFIS.map(p => `<option value="${p.v}">${p.v} (${cont[p.v] || 0})</option>`).join('')
+    + `<option value="__sem">Sem perfil (${sem})</option>`;
+  sel.value = [...sel.options].some(o => o.value === atual) ? atual : '';
+}
+(() => {
+  const s = document.getElementById('dPerfil');
+  if(s){ s.innerHTML = perfilOpcoes_(''); s.addEventListener('change', () => s.setAttribute('style', perfilEstilo_(s.value))); }
+  const l = document.getElementById('perfilLegenda');
+  if(l) l.innerHTML = perfilLegendaHtml_();
+})();
 function renderTable(){
   const start = (currentPage-1)*PAGE_SIZE;
   const pageItems = currentList.slice(start, start+PAGE_SIZE);
@@ -1426,6 +1493,7 @@ function renderTable(){
       <td style="border-left:4px solid ${tierColor_(e.tier)}"><span class="row-name" data-detail="${idx}">${escapeHtml(e.nome)}</span><br><span class="row-sub">${e.ultima_venda ? 'última venda '+escapeHtml(fmtDate_(e.ultima_venda)) : 'sem venda registrada'}</span></td>
       <td class="row-sub">${ofertasCell_(e) || escapeHtml(produtosFallback_(e).join(', ')) || '—'}</td>
       <td>${trafegoCell_(e, idx)}</td>
+      <td>${perfilCell_(e, idx)}</td>
       <td>${faturamentoCell}</td>
       <td><span class="badge b-${e.tier}">${e.dias_sem_vender!==null && e.dias_sem_vender!==undefined ? e.dias_sem_vender+'d' : 'sem dado'}</span>${pctBadge_(e)}</td>
       <td>${contactCell(e)}</td>
@@ -1435,7 +1503,7 @@ function renderTable(){
         ${(e.fontes_planilha||[]).includes('adicionado manualmente') ? `<button class="danger" data-delbtn="${idx}">Excluir</button>` : ''}
       </td>
     </tr>
-    <tr class="script-row" id="${rowId}"><td colspan="7"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
+    <tr class="script-row" id="${rowId}"><td colspan="8"><div class="script-box" id="${rowId}_box"></div></td></tr>`;
   }).join('');
 
   tbody.querySelectorAll('button[data-script]').forEach(btn => {
@@ -1485,6 +1553,7 @@ function renderTable(){
   });
 
   ligarTrafego_(tbody);
+  ligarPerfil_(tbody);
   renderPager();
 }
 
@@ -1571,6 +1640,7 @@ document.getElementById('searchBox').addEventListener('input', applyFilters);
 document.getElementById('tierFilter').addEventListener('change', applyFilters);
 document.getElementById('contactFilter').addEventListener('change', applyFilters);
 document.getElementById('trafegoFilter').addEventListener('change', applyFilters);
+document.getElementById('perfilFilter').addEventListener('change', applyFilters);
 document.getElementById('ontemFilter').addEventListener('change', applyFilters);
 document.getElementById('semanaFilter').addEventListener('change', applyFilters);
 document.getElementById('sortFilter').addEventListener('change', applyFilters);
@@ -1580,13 +1650,13 @@ document.getElementById('monthFilter').addEventListener('change', () => {
 });
 
 document.getElementById('copySheetsBtn').addEventListener('click', () => {
-  const header = ['Nome','Confirmado (Orders_2026)','Produtos','Fonte de Trafego','Volume Historico','Volume Ago','Volume Set','Net Ago','Net Set','Ultima Venda','Dias Sem Vender','Tier','Telefone','Conf. Telefone','Telegram','Conf. Telegram','Status Planilha','Ultimo Contato Registrado'];
+  const header = ['Nome','Confirmado (Orders_2026)','Produtos','Fonte de Trafego','Perfil','Volume Historico','Volume Ago','Volume Set','Net Ago','Net Set','Ultima Venda','Dias Sem Vender','Tier','Telefone','Conf. Telefone','Telegram','Conf. Telegram','Status Planilha','Ultimo Contato Registrado'];
   const lines = [header.join('\t')];
   currentList.forEach(e => {
     const log = ultimoContato_(normName(e.nome));
     const logTxt = log ? `${log.oferta} (${log.data}): ${log.resumo||''}` : '';
     lines.push([
-      e.nome, e.confirmado?'sim':'nao', (e.produtos||[]).join('; '), trafegoDe_(e.nome),
+      e.nome, e.confirmado?'sim':'nao', (e.produtos||[]).join('; '), trafegoDe_(e.nome), perfilDe_(e.nome),
       (e.volume_total||0).toFixed(2),
       e.volume_ago!==null&&e.volume_ago!==undefined?e.volume_ago.toFixed(2):'',
       e.volume_set!==null&&e.volume_set!==undefined?e.volume_set.toFixed(2):'',
@@ -1735,6 +1805,7 @@ function openDetailModal(entry){
   document.getElementById('dTelegram').value = entry.telegram || '';
   document.getElementById('dNomeDash').value = meta.nome_dash || '';
   document.getElementById('dTrafego').innerHTML = trafegoOpcoes_(trafegoDe_(entry.nome));
+  { const p = document.getElementById('dPerfil'), v = perfilDe_(entry.nome); p.innerHTML = perfilOpcoes_(v); p.setAttribute('style', perfilEstilo_(v)); }
   document.getElementById('dCpa').value = meta.cpa || '';
   document.getElementById('dBuygoods').value = meta.buygoods_user || '';
   document.getElementById('dAtendente').value = meta.atendente || '';
@@ -1763,9 +1834,10 @@ document.getElementById('dSaveMeta').addEventListener('click', async () => {
     trafego: document.getElementById('dTrafego').value,
     cpa: document.getElementById('dCpa').value.trim(),
     buygoods_user: document.getElementById('dBuygoods').value.trim(),
-    atendente: document.getElementById('dAtendente').value
+    atendente: document.getElementById('dAtendente').value,
+    perfil: document.getElementById('dPerfil').value
   };
-  affiliateMeta[key] = meta;
+  affiliateMeta[key] = Object.assign({}, affiliateMeta[key] || {}, meta);
   saveLS(LS_META, affiliateMeta);
   DATA = buildData();
   applyFilters();
@@ -1974,11 +2046,11 @@ function processContactsImport(wb, filename){
   keys.forEach(key => {
     const r = results[key];
     const cur = affiliateMeta[key] || {};
-    affiliateMeta[key] = {
+    affiliateMeta[key] = Object.assign({}, cur, {
       nome_dash: cur.nome_dash || '', trafego: cur.trafego || '', cpa: cur.cpa || '', buygoods_user: cur.buygoods_user || '',
       telefone: r.telefone || cur.telefone || '',
       telegram: r.telegram || cur.telegram || ''
-    };
+    });
   });
   saveLS(LS_META, affiliateMeta);
   DATA = buildData();
