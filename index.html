@@ -2197,6 +2197,17 @@ async function postEmLotes_(action, arr, tam){
 async function processBuyGoodsImport(arquivos){
   if(!Array.isArray(arquivos)) arquivos = [{wb: arguments[0], filename: arguments[1]}];
   arquivos = arquivos.slice().sort((a,b) => String(a.filename).localeCompare(String(b.filename)));
+  // a importação regrava no Sheets a série inteira de cada produto/afiliado/conta a partir do que está
+  // neste navegador — então, antes de mexer em qualquer coisa, puxa a base atual do Sheets (a aba pode estar
+  // aberta há dias, ou a carga inicial pode ter falhado). Sem a base atual não importa: gravaria dados velhos
+  // por cima e apagaria os dias que outras pessoas importaram
+  if(APPS_SCRIPT_URL){
+    showToast('Carregando a base atual do Google Sheets antes de importar...');
+    if(!(await syncFromServer())){
+      alert('Não consegui carregar a base do Google Sheets agora, então não importei nada (importar assim poderia apagar dias que já estão lá). Confira a internet e tente de novo em alguns segundos.');
+      return;
+    }
+  }
   const byAff = {}; // nome_norm -> {nome, produtos:Set, daily:{dayKey:{vendas,faturamento}}}
   const porProdutoDia = {}; // produto -> {dayKey: vendas} — soma de TODOS (inclusive internos e vendas diretas)
   const valorProdutoDia = {}; // produto -> {dayKey: {gross,refund,chargeback,shipping,taxes}}
@@ -2241,7 +2252,8 @@ async function processBuyGoodsImport(arquivos){
         }
         const idItem = 'Order Item Id' in hidx ? row[hidx['Order Item Id']] : null;
         if(idItem !== null && idItem !== undefined && idItem !== ''){
-          const kId = idItem + '|' + actionType;
+          // o Order Item Id só é único dentro do produto (cada produto é uma conta BuyGoods com a própria numeração) — sem o produto na chave, pedido de outro produto com o mesmo número era descartado como repetido
+          const kId = produto + '|' + idItem + '|' + actionType;
           if(vistos.has(kId)) continue;
           vistos.add(kId);
         }
